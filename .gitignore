@@ -1,0 +1,18 @@
+# Build directories
+build/
+Builds/
+Bin/
+DerivedData/
+
+# IDEs
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+*.sln
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
