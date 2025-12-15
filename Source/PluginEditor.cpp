@@ -6,16 +6,34 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
 {
     addAndMakeVisible(masterTriggerComp);
     
-    noteLaneComp = std::make_unique<LaneComponent>(p.noteLane, "NOTE", juce::Colour(0xFF3FA2FE), 0, 11);
+    noteLaneComp = std::make_unique<LaneComponent>(p.noteLane, "NOTE", Theme::noteColor, 0, 11);
+    noteLaneComp->valueFormatter = [](int val) {
+        const char* notes[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        if (val >= 0 && val < 12) return juce::String(notes[val]);
+        return juce::String(val);
+    };
     addAndMakeVisible(*noteLaneComp);
     
-    octaveLaneComp = std::make_unique<LaneComponent>(p.octaveLane, "OCTAVE", juce::Colour(0xFFF8A43D), -2, 8);
+    octaveLaneComp = std::make_unique<LaneComponent>(p.octaveLane, "OCT", Theme::octaveColor, -2, 8);
+    octaveLaneComp->valueFormatter = [](int val) { return juce::String(val); };
     addAndMakeVisible(*octaveLaneComp);
     
-    velocityLaneComp = std::make_unique<LaneComponent>(p.velocityLane, "VEL", juce::Colour(0xFFF72DA3), 0, 127);
+    velocityLaneComp = std::make_unique<LaneComponent>(p.velocityLane, "VEL", Theme::velocityColor, 0, 127);
+    velocityLaneComp->valueFormatter = [](int val) { return juce::String(val); };
     addAndMakeVisible(*velocityLaneComp);
     
-    lengthLaneComp = std::make_unique<LaneComponent>(p.lengthLane, "LENGTH", juce::Colour(0xFFA228FF), 0, 5);
+    lengthLaneComp = std::make_unique<LaneComponent>(p.lengthLane, "LEN", Theme::lengthColor, 0, 5);
+    lengthLaneComp->valueFormatter = [](int val) -> juce::String {
+        switch(val) {
+            case 0: return "OFF";
+            case 1: return "128n";
+            case 2: return "64n";
+            case 3: return "32n";
+            case 4: return "16n";
+            case 5: return "LEG";
+            default: return juce::String(val);
+        }
+    };
     addAndMakeVisible(*lengthLaneComp);
 
     setSize (800, 600);
@@ -36,23 +54,35 @@ void ShequencerAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced(10);
     
-    // Master Trigger Row is fixed 15px
-    masterTriggerComp.setBounds(area.removeFromTop(15));
+    // Master Trigger Row (Increased height)
+    masterTriggerComp.setBounds(area.removeFromTop(40));
     
     // Add some spacing
-    area.removeFromTop(5);
+    area.removeFromTop(20);
     
-    // Remaining area for 4 lanes
-    int laneHeight = area.getHeight() / 4;
+    // Fixed height for lanes
+    int gap = 20;
+    int laneHeight = 110;
     
     noteLaneComp->setBounds(area.removeFromTop(laneHeight));
+    area.removeFromTop(gap);
+    
     octaveLaneComp->setBounds(area.removeFromTop(laneHeight));
+    area.removeFromTop(gap);
+    
     velocityLaneComp->setBounds(area.removeFromTop(laneHeight));
+    area.removeFromTop(gap);
+    
     lengthLaneComp->setBounds(area.removeFromTop(laneHeight));
 }
 
 void ShequencerAudioProcessorEditor::timerCallback()
 {
+    noteLaneComp->tick();
+    octaveLaneComp->tick();
+    velocityLaneComp->tick();
+    lengthLaneComp->tick();
+
     masterTriggerComp.repaint();
     noteLaneComp->repaint();
     octaveLaneComp->repaint();

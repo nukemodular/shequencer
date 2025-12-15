@@ -3,24 +3,22 @@
 
 ShequencerAudioProcessor::ShequencerAudioProcessor()
      : AudioProcessor (BusesProperties()
-                     .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                     .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                       )
+                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
     // Initialize default values
     masterTriggers.fill(false);
     
     noteLane.values.fill(0); // C
-    noteLane.advanceTriggers.fill(true);
+    noteLane.triggers.fill(true);
     
     octaveLane.values.fill(3); // Octave 3
-    octaveLane.advanceTriggers.fill(true);
+    octaveLane.triggers.fill(true);
     
     velocityLane.values.fill(100);
-    velocityLane.advanceTriggers.fill(true);
+    velocityLane.triggers.fill(true);
     
     lengthLane.values.fill(4); // 16th
-    lengthLane.advanceTriggers.fill(true);
+    lengthLane.triggers.fill(true);
 }
 
 ShequencerAudioProcessor::~ShequencerAudioProcessor()
@@ -29,7 +27,7 @@ ShequencerAudioProcessor::~ShequencerAudioProcessor()
 
 const juce::String ShequencerAudioProcessor::getName() const
 {
-    return "shequencer";
+    return "toolBoy Sh-equencer v1";
 }
 
 bool ShequencerAudioProcessor::acceptsMidi() const
@@ -44,7 +42,7 @@ bool ShequencerAudioProcessor::producesMidi() const
 
 bool ShequencerAudioProcessor::isMidiEffect() const
 {
-    return true;
+    return false;
 }
 
 double ShequencerAudioProcessor::getTailLengthSeconds() const
@@ -98,12 +96,11 @@ void ShequencerAudioProcessor::releaseResources()
 
 bool ShequencerAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
-    // Some plugin hosts, such as certain GarageBand versions, will only
-    // load plugins that support stereo bus layouts.
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    // This is an Instrument, so we want an output, but no input.
+    if (layouts.getMainOutputChannelSet() == juce::AudioChannelSet::disabled())
+        return false;
+
+    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled())
         return false;
 
     return true;
@@ -118,7 +115,6 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // Get PlayHead
     auto* playHead = getPlayHead();
     if (playHead == nullptr) return;
 
@@ -130,8 +126,6 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     if (!pos.getIsPlaying())
     {
         isPlaying = false;
-        // Send All Notes Off if we just stopped?
-        // For now, just clear active notes
         activeNotes.clear();
         return;
     }
@@ -139,34 +133,31 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     if (!isPlaying)
     {
         isPlaying = true;
-        // Reset logic if needed, or sync to PPQ
+        lastPositionInQuarterNotes = *pos.getPpqPosition();
     }
 
-    double ppq = *pos.getPpqPosition();
+    double currentPPQ = *pos.getPpqPosition();
     double bpm = *pos.getBpm();
-    
-    // Calculate time info
-    // We want to trigger on 16th notes.
-    // 16th note = 0.25 PPQ.
+    if (bpm <= 0) bpm = 120.0;
     
     double samplesPerQuarterNote = (getSampleRate() * 60.0) / bpm;
+    int numSamples = buffer.getNumSamples();
+    double endPPQ = currentPPQ + (numSamples / samplesPerQuarterNote);
     
-    // Check for Note Offs
+    // Process Note Offs first
     for (auto it = activeNotes.begin(); it != activeNotes.end();)
     {
-        if (ppq >= it->noteOffPosition)
+        if (currentPPQ >= it->noteOffPosition) // Already passed?
         {
-            // Send Note Off
-            // Calculate offset in samples
-            double offsetPPQ = it->noteOffPosition - lastPositionInQuarterNotes;
-            // If offset is negative (should have happened in past), send immediately at 0
-            int sampleOffset = 0;
-            if (offsetPPQ > 0)
-                sampleOffset = (int)(offsetPPQ * samplesPerQuarterNote);
+             midiMessages.addEvent(juce::MidiMessage::noteOff(it->midiChannel, it->noteNumber), 0);
+             it = activeNotes.erase(it);
+        }
+        else if (it->noteOffPosition < endPPQ) // Will happen in this block
+        {
+            double offsetPPQ = it->noteOffPosition - currentPPQ;
+            int sampleOffset = (int)(offsetPPQ * samplesPerQuarterNote);
+            sampleOffset = juce::jlimit(0, numSamples - 1, sampleOffset);
             
-            if (sampleOffset < 0) sampleOffset = 0;
-            if (sampleOffset >= buffer.getNumSamples()) sampleOffset = buffer.getNumSamples() - 1;
-
             midiMessages.addEvent(juce::MidiMessage::noteOff(it->midiChannel, it->noteNumber), sampleOffset);
             it = activeNotes.erase(it);
         }
@@ -175,162 +166,91 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             ++it;
         }
     }
-
-    // Check for new Step
-    // We check if the integer part of (ppq / 0.25) has changed
-    // Or simpler: check if we crossed a 0.25 boundary
     
-    double stepDuration = 0.25;
-    double currentStepFloat = ppq / stepDuration;
-    double lastStepFloat = lastPositionInQuarterNotes / stepDuration;
+    // Step Logic
+    double stepDuration = 0.25; // 16th note
     
-    if (std::floor(currentStepFloat) > std::floor(lastStepFloat))
+    double searchStart = lastPositionInQuarterNotes;
+    double searchEnd = endPPQ;
+    
+    // Find the first step boundary > searchStart
+    double nextStepBoundary = std::floor(searchStart / stepDuration) * stepDuration + stepDuration;
+    
+    while (nextStepBoundary <= searchEnd)
     {
-        // New 16th note step!
-        // Calculate which step index (0-15)
-        long long totalSteps = (long long)std::floor(currentStepFloat);
-        int stepIndex = totalSteps % 16;
-        currentMasterStep = stepIndex;
-
-        // Check Master Trigger
-        if (masterTriggers[stepIndex])
+        // We hit a step at nextStepBoundary!
+        
+        // Calculate sample offset
+        double offsetPPQ = nextStepBoundary - currentPPQ;
+        int sampleOffset = (int)(offsetPPQ * samplesPerQuarterNote);
+        if (sampleOffset < 0) sampleOffset = 0;
+        if (sampleOffset >= numSamples) sampleOffset = numSamples - 1;
+        
+        // --- CORE LOGIC ---
+        long long stepCount = (long long)std::round(nextStepBoundary / stepDuration);
+        int stepIdx = stepCount % masterLength;
+        currentMasterStep = stepIdx;
+        
+        // 1. Advance Lanes
+        auto processLaneAdvancement = [&](SequencerLane& lane) {
+            bool masterHit = lane.enableMasterSource && masterTriggers[stepIdx];
+            int localStep = stepCount % lane.triggerLoopLength;
+            lane.currentTriggerStep = localStep;
+            
+            bool localHit = lane.enableLocalSource && lane.triggers[localStep];
+            
+            if (masterHit || localHit)
+                lane.advanceValue();
+        };
+        
+        processLaneAdvancement(noteLane);
+        processLaneAdvancement(octaveLane);
+        processLaneAdvancement(velocityLane);
+        processLaneAdvancement(lengthLane);
+        
+        // 2. Play Note (Only if Master Trigger is active)
+        if (masterTriggers[stepIdx])
         {
-            // Get Values from Lanes
-            int noteVal = noteLane.getNextValueAndAdvance();
-            int octVal = octaveLane.getNextValueAndAdvance();
-            int velVal = velocityLane.getNextValueAndAdvance();
-            int lenVal = lengthLane.getNextValueAndAdvance();
-            
-            // Process Values
-            // Note: 0-11 (C to B)
-            // Octave: -2 to 8
-            // MIDI Note = (Octave + 2) * 12 + Note? 
-            // Standard: C3 is 60. C-2 is 0.
-            // Let's assume Octave 3 is middle C range.
-            // (Octave + 1) * 12 + Note is a common formula where -1 is bottom.
-            // Let's use: (octVal + 2) * 12 + noteVal.
-            // If octVal is -2, noteVal 0 -> 0. Correct.
-            
-            int midiNote = (octVal + 2) * 12 + noteVal;
-            midiNote = juce::jlimit(0, 127, midiNote);
-            
-            int velocity = velVal;
-            
-            // Length
-            // 0: Off, 1: 128th, 2: 64th, 3: 32th, 4: 16th, 5: Legato
-            double duration = 0.0;
-            bool shouldPlay = true;
-            
-            switch (lenVal)
-            {
-                case 0: shouldPlay = false; break;
-                case 1: duration = 0.03125; break; // 1/32
-                case 2: duration = 0.0625; break;  // 1/16
-                case 3: duration = 0.125; break;   // 1/8
-                case 4: duration = 0.25; break;    // 1/4 (16th note step)
-                case 5: duration = 0.25; break;    // Legato (full step)
-                default: duration = 0.25; break;
-            }
-            
-            if (shouldPlay && velocity > 0)
-            {
-                // Send Note On
-                // Calculate sample offset relative to block start
-                // The step started at floor(currentStepFloat) * 0.25
-                double stepStartPPQ = std::floor(currentStepFloat) * stepDuration;
-                double offsetPPQ = stepStartPPQ - lastPositionInQuarterNotes; 
-                // Note: lastPositionInQuarterNotes is the start of this block? 
-                // Wait, getPosition() returns the position at the START of the block.
-                // So ppq is start of block.
-                // Actually, we need to check if the step boundary is WITHIN this block.
-                
-                // Let's re-evaluate the timing logic.
-                // We have start_ppq (ppq) and end_ppq (ppq + samples / samplesPerQuarterNote).
-                // We want to find if a multiple of 0.25 falls in [start_ppq, end_ppq).
-                
-                double endPPQ = ppq + (buffer.getNumSamples() / samplesPerQuarterNote);
-                
-                double nextStepPPQ = std::ceil(ppq / stepDuration) * stepDuration;
-                
-                // If the next step boundary is within this block
-                if (nextStepPPQ < endPPQ)
-                {
-                    // We have a trigger!
-                    // But wait, if we just started playback, we might be exactly ON a step.
-                    // std::ceil(4.0) is 4.0.
-                    // If ppq is 4.0, nextStepPPQ is 4.0.
-                    // If ppq is 4.0001, nextStepPPQ is 4.25.
-                    
-                    // Let's use a small epsilon or just check range.
-                    // Actually, the previous logic `floor(current) > floor(last)` was based on state.
-                    // But `processBlock` is stateless regarding the *previous* block's exact end unless we store it.
-                    // `lastPositionInQuarterNotes` is stored.
-                    
-                    // Better approach for block processing:
-                    // Iterate through all 16th note boundaries that occur in this block.
-                    
-                    double currentSearchPPQ = std::ceil(ppq / stepDuration) * stepDuration;
-                    if (currentSearchPPQ == ppq) {
-                         // If we are exactly on the beat, trigger now.
-                         // But we need to make sure we don't double trigger if we processed this in previous block?
-                         // Usually hosts handle this, but let's be safe.
-                         // If we use `nextStepPPQ < endPPQ`, we catch it.
-                    }
-                    
-                    // Let's loop in case buffer is huge (unlikely to span multiple steps but possible)
-                    while (currentSearchPPQ < endPPQ)
-                    {
-                        // Calculate sample offset
-                        double offsetFromStart = currentSearchPPQ - ppq;
-                        int sampleOffset = (int)(offsetFromStart * samplesPerQuarterNote);
-                        
-                        // Trigger Logic
-                        long long stepCount = (long long)std::round(currentSearchPPQ / stepDuration);
-                        int stepIdx = stepCount % 16;
-                        currentMasterStep = stepIdx; // Update UI state
-                        
-                        if (masterTriggers[stepIdx])
-                        {
-                             // ... (Get values logic repeated) ...
-                             // I should refactor this into a helper or just put it here.
-                             
-                             int n = noteLane.getNextValueAndAdvance();
-                             int o = octaveLane.getNextValueAndAdvance();
-                             int v = velocityLane.getNextValueAndAdvance();
-                             int l = lengthLane.getNextValueAndAdvance();
-                             
-                             int mNote = (o + 2) * 12 + n;
-                             mNote = juce::jlimit(0, 127, mNote);
-                             
-                             double dur = 0.25;
-                             bool play = true;
-                             if (l == 0) play = false;
-                             else if (l == 1) dur = 0.03125;
-                             else if (l == 2) dur = 0.0625;
-                             else if (l == 3) dur = 0.125;
-                             else if (l == 4) dur = 0.25;
-                             else if (l == 5) dur = 0.25; // Legato
-                             
-                             if (play && v > 0)
-                             {
-                                 midiMessages.addEvent(juce::MidiMessage::noteOn(1, mNote, (juce::uint8)v), sampleOffset);
-                                 
-                                 ActiveNote an;
-                                 an.noteNumber = mNote;
-                                 an.midiChannel = 1;
-                                 an.noteOffPosition = currentSearchPPQ + dur;
-                                 activeNotes.push_back(an);
-                             }
-                        }
-                        
-                        currentSearchPPQ += stepDuration;
-                    }
-                }
-            }
+             int n = noteLane.values[noteLane.currentValueStep];
+             int o = octaveLane.values[octaveLane.currentValueStep];
+             int v = velocityLane.values[velocityLane.currentValueStep];
+             int l = lengthLane.values[lengthLane.currentValueStep];
+             
+             // Note: 0-11 (C to B)
+             // Octave: -2 to 8
+             // C-2 is MIDI 0.
+             // Formula: (Octave + 2) * 12 + Note
+             
+             int mNote = (o + 2) * 12 + n;
+             mNote = juce::jlimit(0, 127, mNote);
+             
+             double dur = 0.25;
+             bool play = true;
+             
+             // Length Values: 0:OFF, 1:128n, 2:64n, 3:32n, 4:16n, 5:LEG
+             if (l == 0) play = false;
+             else if (l == 1) dur = 0.03125;
+             else if (l == 2) dur = 0.0625;
+             else if (l == 3) dur = 0.125;
+             else if (l == 4) dur = 0.25;
+             else if (l == 5) dur = 0.25; // Legato
+             
+             if (play && v > 0)
+             {
+                 midiMessages.addEvent(juce::MidiMessage::noteOn(1, mNote, (juce::uint8)v), sampleOffset);
+                 
+                 ActiveNote an;
+                 an.noteNumber = mNote;
+                 an.midiChannel = 1;
+                 an.noteOffPosition = nextStepBoundary + dur;
+                 activeNotes.push_back(an);
+             }
         }
+        
+        nextStepBoundary += stepDuration;
     }
     
-    lastPositionInQuarterNotes = ppq;
+    lastPositionInQuarterNotes = endPPQ;
 }
 
 bool ShequencerAudioProcessor::hasEditor() const
@@ -345,15 +265,78 @@ juce::AudioProcessorEditor* ShequencerAudioProcessor::createEditor()
 
 void ShequencerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    juce::XmlElement xml("SHEQUENCER_STATE");
+    
+    // Save Master Data
+    xml.setAttribute("masterLength", masterLength);
+    
+    juce::String masterTrigStr;
+    for (bool b : masterTriggers) masterTrigStr += (b ? "1" : "0");
+    xml.setAttribute("masterTriggers", masterTrigStr);
+    
+    // Helper to save lane
+    auto saveLane = [&](SequencerLane& lane, juce::String name) {
+        auto* laneXml = xml.createNewChildElement(name);
+        laneXml->setAttribute("valueLoopLength", lane.valueLoopLength);
+        laneXml->setAttribute("triggerLoopLength", lane.triggerLoopLength);
+        laneXml->setAttribute("enableMasterSource", lane.enableMasterSource);
+        laneXml->setAttribute("enableLocalSource", lane.enableLocalSource);
+        
+        juce::String valStr;
+        for (int v : lane.values) valStr += juce::String(v) + ",";
+        laneXml->setAttribute("values", valStr);
+        
+        juce::String trigStr;
+        for (bool b : lane.triggers) trigStr += (b ? "1" : "0");
+        laneXml->setAttribute("triggers", trigStr);
+    };
+    
+    saveLane(noteLane, "NOTE_LANE");
+    saveLane(octaveLane, "OCTAVE_LANE");
+    saveLane(velocityLane, "VELOCITY_LANE");
+    saveLane(lengthLane, "LENGTH_LANE");
+    
+    copyXmlToBinary(xml, destData);
 }
 
 void ShequencerAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    
+    if (xmlState != nullptr && xmlState->hasTagName("SHEQUENCER_STATE"))
+    {
+        masterLength = xmlState->getIntAttribute("masterLength", 16);
+        
+        juce::String masterTrigStr = xmlState->getStringAttribute("masterTriggers");
+        for (int i = 0; i < 16 && i < masterTrigStr.length(); ++i)
+            masterTriggers[i] = (masterTrigStr[i] == '1');
+            
+        auto loadLane = [&](SequencerLane& lane, juce::String name) {
+            auto* laneXml = xmlState->getChildByName(name);
+            if (laneXml)
+            {
+                lane.valueLoopLength = laneXml->getIntAttribute("valueLoopLength", 16);
+                lane.triggerLoopLength = laneXml->getIntAttribute("triggerLoopLength", 16);
+                lane.enableMasterSource = laneXml->getBoolAttribute("enableMasterSource", false);
+                lane.enableLocalSource = laneXml->getBoolAttribute("enableLocalSource", true);
+                
+                juce::String valStr = laneXml->getStringAttribute("values");
+                juce::StringArray tokens;
+                tokens.addTokens(valStr, ",", "");
+                for (int i = 0; i < 16 && i < tokens.size(); ++i)
+                    lane.values[i] = tokens[i].getIntValue();
+                    
+                juce::String trigStr = laneXml->getStringAttribute("triggers");
+                for (int i = 0; i < 16 && i < trigStr.length(); ++i)
+                    lane.triggers[i] = (trigStr[i] == '1');
+            }
+        };
+        
+        loadLane(noteLane, "NOTE_LANE");
+        loadLane(octaveLane, "OCTAVE_LANE");
+        loadLane(velocityLane, "VELOCITY_LANE");
+        loadLane(lengthLane, "LENGTH_LANE");
+    }
 }
 
 // This creates new instances of the plugin..

@@ -6,23 +6,27 @@
 
 struct SequencerLane
 {
+    // Value Sequence (Bars)
     std::array<int, 16> values;
-    std::array<bool, 16> advanceTriggers;
-    int currentStep = 0;
-    int loopLength = 16;
+    int valueLoopLength = 16;
+    int currentValueStep = 0;
+
+    // Trigger Sequence (Buttons)
+    std::array<bool, 16> triggers;
+    int triggerLoopLength = 16;
+    int currentTriggerStep = 0;
     
-    // Helper to get next value and advance if needed
-    int getNextValueAndAdvance()
+    // Source Toggles
+    bool enableMasterSource = false; // Yellow Toggle
+    bool enableLocalSource = true;   // Colored Toggle
+    
+    // Helper to advance value
+    void advanceValue()
     {
-        int val = values[currentStep];
-        if (advanceTriggers[currentStep])
-        {
-            currentStep = (currentStep + 1) % loopLength;
-        }
-        return val;
+        currentValueStep = (currentValueStep + 1) % valueLoopLength;
     }
 
-    void reset() { currentStep = 0; }
+    void reset() { currentValueStep = 0; }
 };
 
 class ShequencerAudioProcessor  : public juce::AudioProcessor
@@ -61,6 +65,7 @@ public:
 
     // Sequencer Data
     std::array<bool, 16> masterTriggers;
+    int masterLength = 16;
     
     SequencerLane noteLane;
     SequencerLane octaveLane;
