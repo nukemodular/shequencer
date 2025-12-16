@@ -16,6 +16,7 @@ struct SequencerLane
     std::array<bool, 16> triggers;
     int triggerLoopLength = 16;
     int currentTriggerStep = 0;
+    int activeTriggerStep = 0;
     
     // Source Toggles
     bool enableMasterSource = false; // Yellow Toggle
@@ -164,6 +165,7 @@ struct SequencerLane
         currentValueStep = 0; 
         activeValueStep = 0; 
         currentTriggerStep = 0;
+        activeTriggerStep = 0;
         forceNextStep = false; 
         valueMovingForward = true;
         triggerMovingForward = true;

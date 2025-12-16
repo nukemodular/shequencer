@@ -65,14 +65,27 @@ public:
         juce::Rectangle<int> masterToggle(10, barTopY, 40, triggerHeight);
         masterToggle = masterToggle.reduced(2);
         
-        // Draw Name (Between M and L)
-        int labelTop = barTopY + triggerHeight;
-        int labelBottom = h - triggerHeight;
-        juce::Rectangle<int> labelRect(0, labelTop, 60, labelBottom - labelTop);
-
+        // Draw Reset Button (Between M and L)
+        int btnH = 60;
+        int btnW = 36;
+        int btnX = 12;
+        int btnY = (h - btnH) / 2;
+        
+        juce::Rectangle<int> resetBtnRect(btnX, btnY, btnW, btnH);
+        
         g.setColour(laneColor);
-        g.setFont(juce::Font("Arial", 14.0f, juce::Font::bold));
-        g.drawText(laneName, labelRect, juce::Justification::centred);
+        g.fillRect(resetBtnRect);
+        
+        g.setColour(juce::Colours::black);
+        g.setFont(juce::Font("Arial", 16.0f, juce::Font::bold));
+        
+        juce::String labelText = laneName;
+        if (laneName == "NOTE") labelText = "NO\nTE";
+        else if (laneName == "OCT") labelText = "OC\nTA\nVE";
+        else if (laneName == "VEL") labelText = "VEL\nOC\nITY";
+        else if (laneName == "LEN") labelText = "LE\nNG\nTH";
+        
+        g.drawFittedText(labelText, resetBtnRect, juce::Justification::centred, 3);
         
         // Master Toggle (Yellow)
         g.setColour(Theme::masterColor.withAlpha(laneData.enableMasterSource ? 1.0f : 0.33f));
@@ -123,13 +136,13 @@ public:
         int gap = 1;
         
         // Value Controls
-        juce::Rectangle<int> valLoopRect(col1_X, 0, 40, ctrlH);
+        juce::Rectangle<int> valShiftL(col1_X, 0, 20, ctrlH);
+        valShiftL = valShiftL.reduced(1);
+
+        juce::Rectangle<int> valLoopRect(col1_X + 20, 0, 40, ctrlH);
         valLoopRect = valLoopRect.reduced(1);
         
-        juce::Rectangle<int> valShiftL(col2_X, 0, 20, ctrlH);
-        valShiftL = valShiftL.reduced(1);
-        
-        juce::Rectangle<int> valShiftR(col2_X + 20, 0, 20, ctrlH);
+        juce::Rectangle<int> valShiftR(col1_X + 60, 0, 20, ctrlH);
         valShiftR = valShiftR.reduced(1);
         
         juce::Rectangle<int> valResetRect(col1_X, ctrlH + gap, 40, ctrlH);
@@ -149,13 +162,13 @@ public:
         // Trigger Controls (Bottom Up)
         int bottomY = getHeight();
         
-        juce::Rectangle<int> trigLoopRect(col1_X, bottomY - ctrlH, 40, ctrlH);
+        juce::Rectangle<int> trigShiftL(col1_X, bottomY - ctrlH, 20, ctrlH);
+        trigShiftL = trigShiftL.reduced(1);
+
+        juce::Rectangle<int> trigLoopRect(col1_X + 20, bottomY - ctrlH, 40, ctrlH);
         trigLoopRect = trigLoopRect.reduced(1);
         
-        juce::Rectangle<int> trigShiftL(col2_X, bottomY - ctrlH, 20, ctrlH);
-        trigShiftL = trigShiftL.reduced(1);
-        
-        juce::Rectangle<int> trigShiftR(col2_X + 20, bottomY - ctrlH, 20, ctrlH);
+        juce::Rectangle<int> trigShiftR(col1_X + 60, bottomY - ctrlH, 20, ctrlH);
         trigShiftR = trigShiftR.reduced(1);
         
         juce::Rectangle<int> trigResetRect(col1_X, bottomY - (ctrlH * 2) - gap, 40, ctrlH);
@@ -164,8 +177,8 @@ public:
         juce::Rectangle<int> trigDirRect(col2_X, bottomY - (ctrlH * 2) - gap, 40, ctrlH);
         trigDirRect = trigDirRect.reduced(1);
         
-        // Reset Button (Small Circle)
-        // Located after right shift buttons (new column) -> Let's put it to the right of the controls
+        // Reset Button (Small Circle) - Removed
+        /*
         int midY = h / 2;
         int resetX = col2_X + 55;
         int resetY = midY;
@@ -173,9 +186,10 @@ public:
         
         g.setColour(laneColor);
         g.drawEllipse(resetX - resetRadius, resetY - resetRadius, resetRadius * 2, resetRadius * 2, 1.0f);
+        */
 
         g.setColour(laneColor);
-        g.setFont(juce::Font("Arial", 10.0f, juce::Font::bold));
+        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
         
         // Draw Value Loop Control (Outline only)
         g.drawRect(valLoopRect);
@@ -282,7 +296,7 @@ public:
         // Draw Random Range Slider
         g.setColour(laneColor);
         g.drawRect(randomRangeRect);
-        g.setFont(juce::Font("Arial", 10.0f, juce::Font::bold));
+        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
         juce::String rangeText = (laneData.randomRange == 0) ? "FULL" : ("+/-" + juce::String(laneData.randomRange));
         g.drawText(rangeText, randomRangeRect, juce::Justification::centred);
 
@@ -328,7 +342,7 @@ public:
             // Highlight current step
             if (i == laneData.activeValueStep)
             {
-                g.setColour(laneColor.brighter(2.0f).withAlpha(0.5f));
+                g.setColour(laneColor.brighter(0.5f).withAlpha(0.5f));
                 g.fillRect(effectiveBarArea);
             }
 
@@ -343,9 +357,9 @@ public:
             }
             
             // Highlight current trigger step
-            if (i == laneData.currentTriggerStep)
+            if (i == laneData.activeTriggerStep)
             {
-                g.setColour(laneColor.brighter(2.0f).withAlpha(0.5f));
+                g.setColour(laneColor.brighter(0.5f).withAlpha(0.5f));
                 g.fillRect(btnArea);
             }
         }
@@ -396,8 +410,12 @@ public:
             }
             else
             {
-                // Label Clicked
-                if (onLabelClicked) onLabelClicked(e.mods.isShiftDown());
+                // Reset Button Clicked (Between M and L)
+                if (e.y >= triggerHeight && e.y < h - triggerHeight)
+                {
+                    if (onResetClicked) onResetClicked(e.mods.isAltDown());
+                    repaint();
+                }
             }
             return;
         }
@@ -419,14 +437,14 @@ public:
             
             // Check Shift Buttons
             // Value Shift L
-            if (e.x >= col2_X && e.x < col2_X + 20 && e.y >= 0 && e.y < ctrlH)
+            if (e.x >= col1_X && e.x < col1_X + 20 && e.y >= 0 && e.y < ctrlH)
             {
                 laneData.shiftValues(-1);
                 repaint();
                 return;
             }
             // Value Shift R
-            if (e.x >= col2_X + 20 && e.x < col2_X + 40 && e.y >= 0 && e.y < ctrlH)
+            if (e.x >= col1_X + 60 && e.x < col1_X + 80 && e.y >= 0 && e.y < ctrlH)
             {
                 laneData.shiftValues(1);
                 repaint();
@@ -436,14 +454,14 @@ public:
             int bottomY = getHeight();
             
             // Trigger Shift L
-            if (e.x >= col2_X && e.x < col2_X + 20 && e.y >= bottomY - ctrlH)
+            if (e.x >= col1_X && e.x < col1_X + 20 && e.y >= bottomY - ctrlH)
             {
                 laneData.shiftTriggers(-1);
                 repaint();
                 return;
             }
             // Trigger Shift R
-            if (e.x >= col2_X + 20 && e.x < col2_X + 40 && e.y >= bottomY - ctrlH)
+            if (e.x >= col1_X + 60 && e.x < col1_X + 80 && e.y >= bottomY - ctrlH)
             {
                 laneData.shiftTriggers(1);
                 repaint();
@@ -451,7 +469,7 @@ public:
             }
             
             // Value Loop (0)
-            if (e.x >= col1_X && e.x < col1_X + 40 && e.y >= 0 && e.y < ctrlH)
+            if (e.x >= col1_X + 20 && e.x < col1_X + 60 && e.y >= 0 && e.y < ctrlH)
             {
                 isDraggingValueLoop = true;
                 lastMouseY = e.y;
@@ -515,7 +533,7 @@ public:
             }
             
             // Trigger Loop (6)
-            if (e.x >= col1_X && e.x < col1_X + 40 && e.y >= bottomY - ctrlH)
+            if (e.x >= col1_X + 20 && e.x < col1_X + 60 && e.y >= bottomY - ctrlH)
             {
                 isDraggingTriggerLoop = true;
                 lastMouseY = e.y;
@@ -523,7 +541,8 @@ public:
                 return;
             }
             
-            // Reset Button
+            // Reset Button - Removed
+            /*
             int midY = h / 2;
             int resetX = col2_X + 55;
             int resetY = midY;
@@ -532,6 +551,7 @@ public:
                 if (onResetClicked) onResetClicked(e.mods.isAltDown());
                 repaint();
             }
+            */
             return;
         }
         
@@ -1109,10 +1129,23 @@ public:
         auto leftArea = area.removeFromLeft(60); // Margin
         auto rightArea = area.removeFromRight(130); // Match LaneComponent layout
         
-        // Draw Name
+        // Draw GATE Reset Button
+        int btnH = 60;
+        int btnW = 36;
+        int btnX = 12;
+        int btnY = (getHeight() - btnH) / 2;
+        
+        // Ensure it fits if component is small
+        if (btnY < 0) { btnY = 0; btnH = getHeight(); }
+        
+        juce::Rectangle<int> resetBtnRect(btnX, btnY, btnW, btnH);
+        
         g.setColour(Theme::masterColor);
-        g.setFont(juce::Font("Arial", 14.0f, juce::Font::bold));
-        g.drawText("GATE", leftArea, juce::Justification::centred);
+        g.fillRect(resetBtnRect);
+        
+        g.setColour(juce::Colours::black);
+        g.setFont(juce::Font("Arial", 16.0f, juce::Font::bold));
+        g.drawFittedText("GA\nTE", resetBtnRect, juce::Justification::centred, 2);
         
         // Draw Length Control (Col A)
         int rightMarginX = getWidth() - 120;
@@ -1139,7 +1172,10 @@ public:
         // It has a "Reset" button (circle).
         // So for MasterTriggerComponent, we should probably just adopt the [Length] [ShiftL] [ShiftR] order.
         
-        juce::Rectangle<int> lenRect(col1_X, 0, 40, getHeight());
+        juce::Rectangle<int> shiftL(col1_X, 0, 20, getHeight());
+        shiftL = shiftL.withSizeKeepingCentre(20, 24).reduced(1);
+
+        juce::Rectangle<int> lenRect(col1_X + 20, 0, 40, getHeight());
         lenRect = lenRect.withSizeKeepingCentre(40, 24).reduced(1);
 
         g.setColour(Theme::masterColor);
@@ -1148,19 +1184,18 @@ public:
         g.drawText(juce::String(processor.masterLength), lenRect, juce::Justification::centred);
         
         // Shift Buttons
-        juce::Rectangle<int> shiftL(col2_X, 0, 20, getHeight());
-        shiftL = shiftL.withSizeKeepingCentre(20, 24).reduced(1);
-        
-        juce::Rectangle<int> shiftR(col2_X + 20, 0, 20, getHeight());
+        juce::Rectangle<int> shiftR(col1_X + 60, 0, 20, getHeight());
         shiftR = shiftR.withSizeKeepingCentre(20, 24).reduced(1);
         
-        // Reset Button
+        // Reset Button - Removed
+        /*
         int resetX = col2_X + 55;
         int resetY = getHeight() / 2;
         float resetRadius = 4.0f;
         
         g.setColour(Theme::masterColor);
         g.drawEllipse(resetX - resetRadius, resetY - resetRadius, resetRadius * 2, resetRadius * 2, 1.0f);
+        */
         
         auto drawTriangle = [&](juce::Rectangle<int> r, bool left) {
             juce::Path p;
@@ -1211,7 +1246,7 @@ public:
             // Highlight current master step
             if (i == processor.currentMasterStep)
             {
-                g.setColour(Theme::masterColor.brighter(2.0f).withAlpha(0.5f));
+                g.setColour(Theme::masterColor.brighter(0.5f).withAlpha(0.5f));
                 g.fillRect(stepArea);
             }
         }
@@ -1222,17 +1257,17 @@ public:
         auto area = getLocalBounds();
         auto leftArea = area.removeFromLeft(60);
         
-        // Handle Label Click (Left Area)
+        // Handle GATE Reset Button (Left Area)
         if (e.x < 60)
         {
-            if (e.mods.isShiftDown())
+            if (e.mods.isAltDown())
             {
-                processor.syncAllToBar();
+                processor.resetAllLanes();
             }
             else
             {
-                // Clicking GATE without shift also syncs all (Global Transport)
-                processor.syncAllToBar();
+                processor.masterTriggers.fill(true);
+                processor.masterLength = 16;
             }
             repaint();
             return;
@@ -1243,7 +1278,7 @@ public:
         int col2_X = rightMarginX + 40;
         
         // Handle Length (Col A)
-        if (e.x >= col1_X && e.x < col1_X + 40)
+        if (e.x >= col1_X + 20 && e.x < col1_X + 60)
         {
             isDraggingLength = true;
             lastMouseX = e.x;
@@ -1252,7 +1287,7 @@ public:
         }
         
         // Handle Shift L
-        if (e.x >= col2_X && e.x < col2_X + 20)
+        if (e.x >= col1_X && e.x < col1_X + 20)
         {
             processor.shiftMasterTriggers(-1);
             repaint();
@@ -1260,14 +1295,15 @@ public:
         }
         
         // Handle Shift R
-        if (e.x >= col2_X + 20 && e.x < col2_X + 40)
+        if (e.x >= col1_X + 60 && e.x < col1_X + 80)
         {
             processor.shiftMasterTriggers(1);
             repaint();
             return;
         }
         
-        // Handle Reset
+        // Handle Reset - Removed
+        /*
         int resetX = col2_X + 55;
         int resetY = getHeight() / 2;
         if (std::abs(e.x - resetX) < 10 && std::abs(e.y - resetY) < 10)
@@ -1284,6 +1320,7 @@ public:
             repaint();
             return;
         }
+        */
             
         area.removeFromRight(130); // Match LaneComponent layout
         

@@ -351,15 +351,22 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             
             // Update Active Step for UI and Playback
             noteLane.activeValueStep = noteLane.currentValueStep;
+            noteLane.activeTriggerStep = noteLane.currentTriggerStep;
+
             octaveLane.activeValueStep = octaveLane.currentValueStep;
+            octaveLane.activeTriggerStep = octaveLane.currentTriggerStep;
+
             velocityLane.activeValueStep = velocityLane.currentValueStep;
+            velocityLane.activeTriggerStep = velocityLane.currentTriggerStep;
+
             lengthLane.activeValueStep = lengthLane.currentValueStep;
+            lengthLane.activeTriggerStep = lengthLane.currentTriggerStep;
 
             int l = lengthLane.values[lengthLane.activeValueStep];
-            bool isHoldOrLegato = (l == 8 || l == 9);
+            bool isHold = (l == 9);
 
-            // 2. Play Note (Only if Master Trigger is active OR Length overrides)
-            if (masterTriggers[stepIdx] || isHoldOrLegato)
+            // 2. Play Note (Only if Master Trigger is active OR Hold is active)
+            if (masterTriggers[stepIdx] || (isHold && isHoldActive))
             {
                  int n = noteLane.values[noteLane.activeValueStep];
                  int o = octaveLane.values[octaveLane.activeValueStep];
@@ -376,7 +383,6 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  
                  double dur = 0.25;
                  bool play = true;
-                 bool isHold = false;
                  
                  // Length Values: 
                  // 0:OFF, 1:128n, 2:128d, 3:64n, 4:64d, 5:32n, 6:32d, 7:16n, 8:LEG, 9:HOLD
@@ -400,7 +406,8 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  bool extended = false;
                  
                  // Check if we are continuing a hold chain
-                 if (isHoldActive && lastTriggeredNoteIndex >= 0)
+                 // Only extend if there is NO new trigger (Gate OFF)
+                 if (isHoldActive && lastTriggeredNoteIndex >= 0 && !masterTriggers[stepIdx])
                  {
                      // Verify note is still active
                      bool noteFound = false;
@@ -459,8 +466,7 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                              note.noteOffPosition = time + dur;
                              
                              lastTriggeredNoteIndex = i;
-                             if (isHoldStep) isHoldActive = true;
-                             else isHoldActive = false;
+                             isHoldActive = true; // Any triggered note can be held
                              
                              break;
                          }
@@ -1001,6 +1007,7 @@ void ShequencerAudioProcessor::resetLane(SequencerLane& lane, int defaultValue)
     lane.currentValueStep = 0;
     lane.activeValueStep = 0;
     lane.currentTriggerStep = 0;
+    lane.activeTriggerStep = 0;
     lane.valueDirection = SequencerLane::Direction::Forward;
     lane.triggerDirection = SequencerLane::Direction::Forward;
     lane.valueMovingForward = true;
