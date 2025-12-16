@@ -14,7 +14,7 @@ namespace Theme
     static const juce::Colour masterColor(0xFFE0E329);
     static const juce::Colour slotsColor(0xFF40FF99);
     
-    static juce::Font getValueFont() { return juce::Font("Arial", 35.0f, juce::Font::bold); }
+    static juce::Font getValueFont() { return juce::Font("Arial", 50.0f, juce::Font::bold); }
 }
 
 class LaneComponent : public juce::Component
@@ -97,23 +97,42 @@ public:
         
         int colB_X = getWidth() - 90; // Moved left by 10px to reduce gap
         
-        juce::Rectangle<int> valLoopRect(colB_X, barTopY, 40, triggerHeight);
+        // Vertical Layout:
+        // 0-20: Value Loop
+        // 22-42: Value Reset
+        // 44-64: Random
+        // 66-86: Trigger Reset
+        // 88-108: Trigger Loop
+        
+        int ctrlH = 20;
+        int gap = 2;
+        
+        juce::Rectangle<int> valLoopRect(colB_X, 0, 40, ctrlH);
         valLoopRect = valLoopRect.reduced(2);
         
-        juce::Rectangle<int> trigLoopRect(colB_X, h - triggerHeight, 40, triggerHeight);
+        juce::Rectangle<int> valResetRect(colB_X, ctrlH + gap, 40, ctrlH);
+        valResetRect = valResetRect.reduced(2);
+        
+        juce::Rectangle<int> randomRect(colB_X, (ctrlH + gap) * 2, 40, ctrlH);
+        randomRect = randomRect.reduced(2);
+        
+        juce::Rectangle<int> trigResetRect(colB_X, (ctrlH + gap) * 3, 40, ctrlH);
+        trigResetRect = trigResetRect.reduced(2);
+        
+        juce::Rectangle<int> trigLoopRect(colB_X, (ctrlH + gap) * 4, 40, ctrlH);
         trigLoopRect = trigLoopRect.reduced(2);
         
-        // Shift Buttons (Reduced by 2 to match loop button height)
-        juce::Rectangle<int> valShiftL(colB_X - 20, barTopY, 20, triggerHeight);
+        // Shift Buttons (Align with Loop buttons)
+        juce::Rectangle<int> valShiftL(colB_X - 20, 0, 20, ctrlH);
         valShiftL = valShiftL.reduced(2);
         
-        juce::Rectangle<int> valShiftR(colB_X + 40, barTopY, 20, triggerHeight);
+        juce::Rectangle<int> valShiftR(colB_X + 40, 0, 20, ctrlH);
         valShiftR = valShiftR.reduced(2);
         
-        juce::Rectangle<int> trigShiftL(colB_X - 20, h - triggerHeight, 20, triggerHeight);
+        juce::Rectangle<int> trigShiftL(colB_X - 20, (ctrlH + gap) * 4, 20, ctrlH);
         trigShiftL = trigShiftL.reduced(2);
         
-        juce::Rectangle<int> trigShiftR(colB_X + 40, h - triggerHeight, 20, triggerHeight);
+        juce::Rectangle<int> trigShiftR(colB_X + 40, (ctrlH + gap) * 4, 20, ctrlH);
         trigShiftR = trigShiftR.reduced(2);
         
         // Reset Button (Small Circle)
@@ -132,6 +151,14 @@ public:
         // Draw Value Loop Control (Outline only)
         g.drawRect(valLoopRect);
         g.drawText(juce::String(laneData.valueLoopLength), valLoopRect, juce::Justification::centred);
+        
+        // Draw Value Reset Control
+        g.drawRect(valResetRect);
+        g.drawText(laneData.valueResetInterval == 0 ? "OFF" : juce::String(laneData.valueResetInterval), valResetRect, juce::Justification::centred);
+        
+        // Draw Trigger Reset Control
+        g.drawRect(trigResetRect);
+        g.drawText(laneData.triggerResetInterval == 0 ? "OFF" : juce::String(laneData.triggerResetInterval), trigResetRect, juce::Justification::centred);
         
         // Draw Trigger Loop Control (Outline only)
         g.drawRect(trigLoopRect);
@@ -168,25 +195,47 @@ public:
         drawTriangle(trigShiftR, false);
 
         // Draw Random Button
-        juce::Rectangle<int> randomRect(colB_X, midY - 12, 40, 24);
-        randomRect = randomRect.reduced(2);
+        // randomRect is already defined above
         
         g.setColour(laneColor);
         g.drawRect(randomRect);
         
-        // Draw Random Icon (4 bars)
-        float barH[] = { 0.5f, 0.25f, 1.0f, 0.33f };
-        int numBars = 4;
-        int padding = 4;
-        auto iconArea = randomRect.reduced(padding);
-        float barWidth = iconArea.getWidth() / (float)numBars;
-        
-        for(int i=0; i<numBars; ++i)
+        if (isHoveringRandom && juce::ModifierKeys::getCurrentModifiers().isShiftDown())
         {
-            float bh = iconArea.getHeight() * barH[i];
-            float bx = iconArea.getX() + i * barWidth;
-            float by = iconArea.getBottom() - bh;
-            g.fillRect((float)bx + 1.0f, by, barWidth - 2.0f, bh);
+            // Draw 3 squares (1 filled, 2 empty)
+            int numSquares = 3;
+            int padding = 6;
+            auto iconArea = randomRect.reduced(padding);
+            float squareSize = iconArea.getWidth() / (float)numSquares;
+            float y = iconArea.getCentreY() - squareSize * 0.5f;
+            
+            for(int i=0; i<numSquares; ++i)
+            {
+                float x = iconArea.getX() + i * squareSize;
+                juce::Rectangle<float> r(x + 1.0f, y + 1.0f, squareSize - 2.0f, squareSize - 2.0f);
+                
+                if (i == 1) // Middle one filled
+                    g.fillRect(r);
+                else
+                    g.drawRect(r, 1.0f);
+            }
+        }
+        else
+        {
+            // Draw Random Icon (4 bars)
+            float barH[] = { 0.5f, 0.25f, 1.0f, 0.33f };
+            int numBars = 4;
+            int padding = 4;
+            auto iconArea = randomRect.reduced(padding);
+            float barWidth = iconArea.getWidth() / (float)numBars;
+            
+            for(int i=0; i<numBars; ++i)
+            {
+                float bh = iconArea.getHeight() * barH[i];
+                float bx = iconArea.getX() + i * barWidth;
+                float by = iconArea.getBottom() - bh;
+                g.fillRect((float)bx + 1.0f, by, barWidth - 2.0f, bh);
+            }
         }
 
         // Draw Steps
@@ -314,30 +363,34 @@ public:
             
             int colB_X = getWidth() - 90;
             
+            // Layout Constants
+            int ctrlH = 20;
+            int gap = 2;
+            
             // Check Shift Buttons
             // Value Shift L
-            if (e.x >= colB_X - 20 && e.x < colB_X && e.y >= barTopY && e.y < barTopY + triggerHeight)
+            if (e.x >= colB_X - 20 && e.x < colB_X && e.y >= 0 && e.y < ctrlH)
             {
                 laneData.shiftValues(-1);
                 repaint();
                 return;
             }
             // Value Shift R
-            if (e.x >= colB_X + 40 && e.x < colB_X + 60 && e.y >= barTopY && e.y < barTopY + triggerHeight)
+            if (e.x >= colB_X + 40 && e.x < colB_X + 60 && e.y >= 0 && e.y < ctrlH)
             {
                 laneData.shiftValues(1);
                 repaint();
                 return;
             }
             // Trigger Shift L
-            if (e.x >= colB_X - 20 && e.x < colB_X && e.y >= h - triggerHeight)
+            if (e.x >= colB_X - 20 && e.x < colB_X && e.y >= (ctrlH + gap) * 4)
             {
                 laneData.shiftTriggers(-1);
                 repaint();
                 return;
             }
             // Trigger Shift R
-            if (e.x >= colB_X + 40 && e.x < colB_X + 60 && e.y >= h - triggerHeight)
+            if (e.x >= colB_X + 40 && e.x < colB_X + 60 && e.y >= (ctrlH + gap) * 4)
             {
                 laneData.shiftTriggers(1);
                 repaint();
@@ -345,39 +398,59 @@ public:
             }
             
             // Value Loop (Top)
-            if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= barTopY && e.y < barTopY + triggerHeight)
+            if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= 0 && e.y < ctrlH)
             {
                 isDraggingValueLoop = true;
                 lastMouseY = e.y;
                 lastMouseX = e.x;
+                return;
             }
+            
+            // Value Reset (2nd)
+            if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= ctrlH + gap && e.y < ctrlH * 2 + gap)
+            {
+                isDraggingValueReset = true;
+                lastMouseY = e.y;
+                lastMouseX = e.x;
+                return;
+            }
+            
+            // Random Button (Middle)
+            if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= (ctrlH + gap) * 2 && e.y < (ctrlH + gap) * 2 + ctrlH)
+            {
+                if (e.mods.isShiftDown())
+                    randomizeTriggers();
+                else
+                    randomizeValues();
+                return;
+            }
+            
+            // Trigger Reset (4th)
+            if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= (ctrlH + gap) * 3 && e.y < (ctrlH + gap) * 3 + ctrlH)
+            {
+                isDraggingTriggerReset = true;
+                lastMouseY = e.y;
+                lastMouseX = e.x;
+                return;
+            }
+            
             // Trigger Loop (Bottom)
-            else if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= h - triggerHeight)
+            if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= (ctrlH + gap) * 4)
             {
                 isDraggingTriggerLoop = true;
                 lastMouseY = e.y;
                 lastMouseX = e.x;
+                return;
             }
-            // Random Button (Middle)
-            else
+            
+            // Reset Button
+            int midY = h / 2;
+            int resetX = colB_X + 75;
+            int resetY = midY;
+            if (std::abs(e.x - resetX) < 10 && std::abs(e.y - resetY) < 10)
             {
-                int midY = h / 2;
-                if (e.x >= colB_X && e.x < colB_X + 40 && e.y >= midY - 12 && e.y < midY + 12)
-                {
-                    if (e.mods.isShiftDown())
-                        randomizeTriggers();
-                    else
-                        randomizeValues();
-                }
-                
-                // Reset Button
-                int resetX = colB_X + 75;
-                int resetY = midY;
-                if (std::abs(e.x - resetX) < 10 && std::abs(e.y - resetY) < 10)
-                {
-                    if (onResetClicked) onResetClicked(e.mods.isAltDown());
-                    repaint();
-                }
+                if (onResetClicked) onResetClicked(e.mods.isAltDown());
+                repaint();
             }
             return;
         }
@@ -434,6 +507,30 @@ public:
     
     void mouseDrag(const juce::MouseEvent& e) override
     {
+        // Helper for Interval Steps
+        auto getNextInterval = [](int current, int delta, bool isShift) -> int {
+            if (isShift) {
+                static const std::vector<int> steps = {0, 1, 2, 4, 8, 16, 32, 64, 128};
+                // Find closest index
+                int closestIdx = 0;
+                int minDiff = 1000;
+                for(int i=0; i<(int)steps.size(); ++i) {
+                    int diff = std::abs(steps[i] - current);
+                    if(diff < minDiff) {
+                        minDiff = diff;
+                        closestIdx = i;
+                    }
+                }
+                
+                int nextIdx = closestIdx + (delta > 0 ? 1 : -1);
+                nextIdx = juce::jlimit(0, (int)steps.size()-1, nextIdx);
+                return steps[nextIdx];
+            } else {
+                int next = current + (delta > 0 ? 1 : -1);
+                return juce::jlimit(0, 128, next);
+            }
+        };
+
         // Handle Right Loop Lengths Drag
         if (isDraggingValueLoop)
         {
@@ -443,6 +540,32 @@ public:
                 if (delta > 0) laneData.valueLoopLength = juce::jmin(16, laneData.valueLoopLength + 1);
                 else laneData.valueLoopLength = juce::jmax(1, laneData.valueLoopLength - 1);
                 
+                lastMouseX = e.x;
+                lastMouseY = e.y;
+                repaint();
+            }
+            return;
+        }
+        
+        if (isDraggingValueReset)
+        {
+            int delta = (e.x - lastMouseX) - (e.y - lastMouseY);
+            if (std::abs(delta) > 5) // Sensitivity
+            {
+                laneData.valueResetInterval = getNextInterval(laneData.valueResetInterval, delta, e.mods.isShiftDown());
+                lastMouseX = e.x;
+                lastMouseY = e.y;
+                repaint();
+            }
+            return;
+        }
+        
+        if (isDraggingTriggerReset)
+        {
+            int delta = (e.x - lastMouseX) - (e.y - lastMouseY);
+            if (std::abs(delta) > 5)
+            {
+                laneData.triggerResetInterval = getNextInterval(laneData.triggerResetInterval, delta, e.mods.isShiftDown());
                 lastMouseX = e.x;
                 lastMouseY = e.y;
                 repaint();
@@ -596,6 +719,51 @@ public:
     {
         isDraggingValueLoop = false;
         isDraggingTriggerLoop = false;
+        isDraggingValueReset = false;
+        isDraggingTriggerReset = false;
+    }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        int colB_X = getWidth() - 90;
+        int ctrlH = 20;
+        int gap = 2;
+        juce::Rectangle<int> randomRect(colB_X, (ctrlH + gap) * 2, 40, ctrlH);
+        randomRect = randomRect.reduced(2);
+        
+        bool nowHovering = randomRect.contains(e.getPosition());
+        if (nowHovering != isHoveringRandom)
+        {
+            isHoveringRandom = nowHovering;
+            repaint(randomRect);
+        }
+    }
+
+    void mouseExit(const juce::MouseEvent& e) override
+    {
+        if (isHoveringRandom)
+        {
+            isHoveringRandom = false;
+            int colB_X = getWidth() - 90;
+            int ctrlH = 20;
+            int gap = 2;
+            juce::Rectangle<int> randomRect(colB_X, (ctrlH + gap) * 2, 40, ctrlH);
+            randomRect = randomRect.reduced(2);
+            repaint(randomRect);
+        }
+    }
+    
+    void modifierKeysChanged(const juce::ModifierKeys& modifiers) override
+    {
+        if (isHoveringRandom)
+        {
+            int colB_X = getWidth() - 90;
+            int ctrlH = 20;
+            int gap = 2;
+            juce::Rectangle<int> randomRect(colB_X, (ctrlH + gap) * 2, 40, ctrlH);
+            randomRect = randomRect.reduced(2);
+            repaint(randomRect);
+        }
     }
 
 private:
@@ -614,9 +782,13 @@ private:
     
     bool isDraggingValueLoop = false;
     bool isDraggingTriggerLoop = false;
+    bool isDraggingValueReset = false;
+    bool isDraggingTriggerReset = false;
     int lastMouseX = 0;
     int lastMouseY = 0;
     int lastDragValue = 0;
+    
+    bool isHoveringRandom = false;
 };
 
 class ShuffleComponent : public juce::Component
@@ -1031,7 +1203,7 @@ private:
     ShequencerAudioProcessor& processor;
 };
 
-class ShequencerAudioProcessorEditor  : public juce::AudioProcessorEditor, public juce::Timer
+class ShequencerAudioProcessorEditor  : public juce::AudioProcessorEditor
 {
 public:
     ShequencerAudioProcessorEditor (ShequencerAudioProcessor&);
@@ -1039,10 +1211,11 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
-    void timerCallback() override;
 
 private:
     ShequencerAudioProcessor& audioProcessor;
+    
+    juce::VBlankAttachment vBlankAttachment;
     
     MasterTriggerComponent masterTriggerComp;
     std::unique_ptr<LaneComponent> noteLaneComp;

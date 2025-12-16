@@ -17,7 +17,7 @@ ShequencerAudioProcessor::ShequencerAudioProcessor()
     velocityLane.values.fill(100);
     velocityLane.triggers.fill(true);
     
-    lengthLane.values.fill(4); // 16th
+    lengthLane.values.fill(7); // 16th
     lengthLane.triggers.fill(true);
 }
 
@@ -181,6 +181,74 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
         lastBarStartPPQ = *barStart;
     }
+    
+    // Handle Automatic Resets (Intervals)
+    // We need to track bar changes relative to the start of playback or some reference
+    // But simpler: count bars since last reset?
+    // Or just use absolute bar count?
+    // pos.getPpqPosition() gives total quarters.
+    // Bars = PPQ / 4 (assuming 4/4).
+    // Let's use the bar index.
+    
+    long long currentBarIndex = 0;
+    if (auto ppq = pos.getPpqPosition())
+    {
+        currentBarIndex = (long long)(*ppq / 4.0); // Approximation for 4/4
+        // Better: use barStartPPQ if available to detect change
+    }
+    
+    static long long lastProcessedBarIndex = -1;
+    if (currentBarIndex != lastProcessedBarIndex)
+    {
+        auto processIntervalReset = [&](SequencerLane& lane) {
+            // Value Reset
+            if (lane.valueResetInterval > 0)
+            {
+                if (currentBarIndex % lane.valueResetInterval == 0)
+                {
+                    lane.currentValueStep = 0;
+                    lane.activeValueStep = 0;
+                }
+            }
+            // Trigger Reset (Step Progression)
+            if (lane.triggerResetInterval > 0)
+            {
+                if (currentBarIndex % lane.triggerResetInterval == 0)
+                {
+                    // Sync to bar start
+                    // We want (currentStep + offset) % loopLen == 0 at this moment?
+                    // Or just reset the offset so it aligns with global?
+                    // "reset/resync step 1 to bar"
+                    // This implies aligning the lane's trigger sequence to the current bar start.
+                    
+                    // Calculate what the offset should be to hit step 0 NOW (at bar start)
+                    // At bar start, global step count (relative to bar) is 0?
+                    // Actually, we just want to reset the internal counter if it was independent,
+                    // but here it's derived from global time + offset.
+                    // So we adjust the offset.
+                    
+                    // We are at the start of a bar (approximately).
+                    // We want localStep to be 0.
+                    // localStep = (globalStep + offset) % loopLen
+                    // So offset = -globalStep
+                    
+                    // Get current global step
+                    double currentPPQ = *pos.getPpqPosition();
+                    long long currentAbsStep = (long long)std::floor(currentPPQ / 0.25);
+                    long long globalStep = currentAbsStep + globalStepOffset;
+                    
+                    lane.triggerStepOffset = -globalStep;
+                }
+            }
+        };
+        
+        processIntervalReset(noteLane);
+        processIntervalReset(octaveLane);
+        processIntervalReset(velocityLane);
+        processIntervalReset(lengthLane);
+        
+        lastProcessedBarIndex = currentBarIndex;
+    }
         
     if (auto ts = pos.getTimeSignature())
     {
@@ -259,13 +327,16 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             velocityLane.activeValueStep = velocityLane.currentValueStep;
             lengthLane.activeValueStep = lengthLane.currentValueStep;
 
-            // 2. Play Note (Only if Master Trigger is active)
-            if (masterTriggers[stepIdx])
+            int l = lengthLane.values[lengthLane.activeValueStep];
+            bool isHoldOrLegato = (l == 8 || l == 9);
+
+            // 2. Play Note (Only if Master Trigger is active OR Length overrides)
+            if (masterTriggers[stepIdx] || isHoldOrLegato)
             {
                  int n = noteLane.values[noteLane.activeValueStep];
                  int o = octaveLane.values[octaveLane.activeValueStep];
                  int v = velocityLane.values[velocityLane.activeValueStep];
-                 int l = lengthLane.values[lengthLane.activeValueStep];
+                 // int l is already defined above
                  
                  // Note: 0-11 (C to B)
                  // Octave: -2 to 8
@@ -277,16 +348,61 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  
                  double dur = 0.25;
                  bool play = true;
+                 bool isHold = false;
                  
-                 // Length Values: 0:OFF, 1:128n, 2:64n, 3:32n, 4:16n, 5:LEG
+                 // Length Values: 
+                 // 0:OFF, 1:128n, 2:128d, 3:64n, 4:64d, 5:32n, 6:32d, 7:16n, 8:LEG, 9:HOLD
+                 bool isHoldStep = (l == 9);
+                 bool shouldPlay = (l != 0);
+                 
                  if (l == 0) play = false;
                  else if (l == 1) dur = 0.03125;
-                 else if (l == 2) dur = 0.0625;
-                 else if (l == 3) dur = 0.125;
-                 else if (l == 4) dur = actualStepDuration;
-                 else if (l == 5) dur = actualStepDuration + 0.01; // Legato (Overlaps next step)
+                 else if (l == 2) dur = 0.046875;
+                 else if (l == 3) dur = 0.0625;
+                 else if (l == 4) dur = 0.09375;
+                 else if (l == 5) dur = 0.125;
+                 else if (l == 6) dur = 0.1875;
+                 else if (l == 7) dur = actualStepDuration * 0.96;
+                 else if (l == 8) dur = actualStepDuration + 0.01; // Legato
+                 else if (l == 9) {
+                     play = true; // HOLD triggers a note
+                     dur = actualStepDuration; // Default to fill step
+                 }
                  
-                 if (play && v > 0)
+                 bool extended = false;
+                 
+                 // Check if we are continuing a hold chain
+                 if (isHoldActive && lastTriggeredNoteIndex >= 0)
+                 {
+                     // Verify note is still active
+                     bool noteFound = false;
+                     for (auto& note : activeNotes) {
+                         // We can't rely on index being stable if notes are removed, but activeNotes is a fixed array
+                         // and we only clear isActive. So index is stable.
+                         // But we should check if it's actually active.
+                         if (&note == &activeNotes[lastTriggeredNoteIndex] && note.isActive) {
+                             noteFound = true;
+                             break;
+                         }
+                     }
+                     
+                     if (noteFound && shouldPlay)
+                     {
+                         // Extend the held note
+                         auto& note = activeNotes[lastTriggeredNoteIndex];
+                         note.noteOffPosition = time + dur;
+                         extended = true;
+                         
+                         // Update State
+                         if (!isHoldStep) isHoldActive = false; // End of chain
+                     }
+                     else
+                     {
+                         isHoldActive = false; // Note died or Rest, can't extend
+                     }
+                 }
+                 
+                 if (!extended && shouldPlay && v > 0)
                  {
                      // Handle overlapping notes of same pitch
                      for (auto& note : activeNotes)
@@ -304,18 +420,33 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                      midiMessages.addEvent(juce::MidiMessage::noteOn(1, mNote, (juce::uint8)v), sampleOffset);
                      
                      // Find free slot
-                     for (auto& note : activeNotes)
+                     for (int i = 0; i < maxActiveNotes; ++i)
                      {
+                         auto& note = activeNotes[i];
                          if (!note.isActive)
                          {
                              note.isActive = true;
                              note.noteNumber = mNote;
                              note.midiChannel = 1;
                              note.noteOffPosition = time + dur;
+                             
+                             lastTriggeredNoteIndex = i;
+                             if (isHoldStep) isHoldActive = true;
+                             else isHoldActive = false;
+                             
                              break;
                          }
                      }
                  }
+                 else if (!shouldPlay)
+                 {
+                     isHoldActive = false;
+                 }
+            }
+            else
+            {
+                // Master Trigger OFF -> Break Hold
+                isHoldActive = false;
             }
 
             // 1. Advance Lanes
@@ -390,6 +521,8 @@ void ShequencerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         auto* laneXml = xml.createNewChildElement(name);
         laneXml->setAttribute("valueLoopLength", lane.valueLoopLength);
         laneXml->setAttribute("triggerLoopLength", lane.triggerLoopLength);
+        laneXml->setAttribute("valueResetInterval", lane.valueResetInterval);
+        laneXml->setAttribute("triggerResetInterval", lane.triggerResetInterval);
         laneXml->setAttribute("enableMasterSource", lane.enableMasterSource);
         laneXml->setAttribute("enableLocalSource", lane.enableLocalSource);
         
@@ -432,6 +565,8 @@ void ShequencerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
                     auto* lXml = patXml->createNewChildElement(name);
                     lXml->setAttribute("valueLoopLength", ld.valueLoopLength);
                     lXml->setAttribute("triggerLoopLength", ld.triggerLoopLength);
+                    lXml->setAttribute("valueResetInterval", ld.valueResetInterval);
+                    lXml->setAttribute("triggerResetInterval", ld.triggerResetInterval);
                     lXml->setAttribute("enableMasterSource", ld.enableMasterSource);
                     lXml->setAttribute("enableLocalSource", ld.enableLocalSource);
                     
@@ -475,6 +610,8 @@ void ShequencerAudioProcessor::setStateInformation (const void* data, int sizeIn
             {
                 lane.valueLoopLength = laneXml->getIntAttribute("valueLoopLength", 16);
                 lane.triggerLoopLength = laneXml->getIntAttribute("triggerLoopLength", 16);
+                lane.valueResetInterval = laneXml->getIntAttribute("valueResetInterval", 0);
+                lane.triggerResetInterval = laneXml->getIntAttribute("triggerResetInterval", 0);
                 lane.enableMasterSource = laneXml->getBoolAttribute("enableMasterSource", false);
                 lane.enableLocalSource = laneXml->getBoolAttribute("enableLocalSource", true);
                 
@@ -523,6 +660,8 @@ void ShequencerAudioProcessor::setStateInformation (const void* data, int sizeIn
                                 if (lXml) {
                                     ld.valueLoopLength = lXml->getIntAttribute("valueLoopLength", 16);
                                     ld.triggerLoopLength = lXml->getIntAttribute("triggerLoopLength", 16);
+                                    ld.valueResetInterval = lXml->getIntAttribute("valueResetInterval", 0);
+                                    ld.triggerResetInterval = lXml->getIntAttribute("triggerResetInterval", 0);
                                     ld.enableMasterSource = lXml->getBoolAttribute("enableMasterSource", false);
                                     ld.enableLocalSource = lXml->getBoolAttribute("enableLocalSource", true);
                                     
@@ -566,6 +705,8 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
         dst.triggers = src.triggers;
         dst.valueLoopLength = src.valueLoopLength;
         dst.triggerLoopLength = src.triggerLoopLength;
+        dst.valueResetInterval = src.valueResetInterval;
+        dst.triggerResetInterval = src.triggerResetInterval;
         dst.enableMasterSource = src.enableMasterSource;
         dst.enableLocalSource = src.enableLocalSource;
     };
@@ -595,6 +736,8 @@ void ShequencerAudioProcessor::loadPattern(int bank, int slot)
         dst.triggers = src.triggers;
         dst.valueLoopLength = src.valueLoopLength;
         dst.triggerLoopLength = src.triggerLoopLength;
+        dst.valueResetInterval = src.valueResetInterval;
+        dst.triggerResetInterval = src.triggerResetInterval;
         dst.enableMasterSource = src.enableMasterSource;
         dst.enableLocalSource = src.enableLocalSource;
     };
@@ -658,6 +801,8 @@ void ShequencerAudioProcessor::resetLane(SequencerLane& lane, int defaultValue)
     lane.triggers.fill(true);
     lane.valueLoopLength = 16;
     lane.triggerLoopLength = 16;
+    lane.valueResetInterval = 0;
+    lane.triggerResetInterval = 0;
     lane.triggerStepOffset = 0;
     lane.currentValueStep = 0;
     lane.currentTriggerStep = 0;
@@ -668,7 +813,7 @@ void ShequencerAudioProcessor::resetAllLanes()
     resetLane(noteLane, 0);      // C
     resetLane(octaveLane, 0);    // 0
     resetLane(velocityLane, 64); // 64
-    resetLane(lengthLane, 3);    // 32n
+    resetLane(lengthLane, 7);    // 16n
     
     masterTriggers.fill(true);
     masterLength = 16;

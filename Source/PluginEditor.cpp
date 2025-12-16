@@ -2,7 +2,23 @@
 #include "PluginEditor.h"
 
 ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p), masterTriggerComp(p), bankSelectorComp(p), patternSlotsComp(p), shuffleComp(p)
+    : AudioProcessorEditor (&p), audioProcessor (p),
+      vBlankAttachment(this, [this] {
+          if (noteLaneComp) noteLaneComp->tick();
+          if (octaveLaneComp) octaveLaneComp->tick();
+          if (velocityLaneComp) velocityLaneComp->tick();
+          if (lengthLaneComp) lengthLaneComp->tick();
+
+          masterTriggerComp.repaint();
+          if (noteLaneComp) noteLaneComp->repaint();
+          if (octaveLaneComp) octaveLaneComp->repaint();
+          if (velocityLaneComp) velocityLaneComp->repaint();
+          if (lengthLaneComp) lengthLaneComp->repaint();
+          bankSelectorComp.repaint();
+          patternSlotsComp.repaint();
+          shuffleComp.repaint();
+      }),
+      masterTriggerComp(p), bankSelectorComp(p), patternSlotsComp(p), shuffleComp(p)
 {
     addAndMakeVisible(masterTriggerComp);
     
@@ -67,15 +83,19 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     };
     addAndMakeVisible(*velocityLaneComp);
     
-    lengthLaneComp = std::make_unique<LaneComponent>(p.lengthLane, "LEN", Theme::lengthColor, 0, 5);
+    lengthLaneComp = std::make_unique<LaneComponent>(p.lengthLane, "LEN", Theme::lengthColor, 0, 9);
     lengthLaneComp->valueFormatter = [](int val) -> juce::String {
         switch(val) {
             case 0: return "OFF";
             case 1: return "128n";
-            case 2: return "64n";
-            case 3: return "32n";
-            case 4: return "16n";
-            case 5: return "LEG";
+            case 2: return "128d";
+            case 3: return "64n";
+            case 4: return "64d";
+            case 5: return "32n";
+            case 6: return "32d";
+            case 7: return "16n";
+            case 8: return "LEG";
+            case 9: return "HOLD";
             default: return juce::String(val);
         }
     };
@@ -88,7 +108,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     };
     lengthLaneComp->onResetClicked = [&](bool resetAll) {
         if (resetAll) p.resetAllLanes();
-        else p.resetLane(p.lengthLane, 3); // 32n
+        else p.resetLane(p.lengthLane, 7); // 16n
     };
     lengthLaneComp->onLabelClicked = [&](bool shift) {
         if (shift) p.syncAllToBar();
@@ -101,12 +121,10 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     addAndMakeVisible(shuffleComp);
 
     setSize (840, 660);
-    startTimerHz(30); // Refresh UI at 30fps
 }
 
 ShequencerAudioProcessorEditor::~ShequencerAudioProcessorEditor()
 {
-    stopTimer();
 }
 
 void ShequencerAudioProcessorEditor::paint (juce::Graphics& g)
@@ -156,21 +174,4 @@ void ShequencerAudioProcessorEditor::resized()
     
     // Middle: Slots
     patternSlotsComp.setBounds(patternRow);
-}
-
-void ShequencerAudioProcessorEditor::timerCallback()
-{
-    if (noteLaneComp) noteLaneComp->tick();
-    if (octaveLaneComp) octaveLaneComp->tick();
-    if (velocityLaneComp) velocityLaneComp->tick();
-    if (lengthLaneComp) lengthLaneComp->tick();
-
-    masterTriggerComp.repaint();
-    if (noteLaneComp) noteLaneComp->repaint();
-    if (octaveLaneComp) octaveLaneComp->repaint();
-    if (velocityLaneComp) velocityLaneComp->repaint();
-    if (lengthLaneComp) lengthLaneComp->repaint();
-    bankSelectorComp.repaint();
-    patternSlotsComp.repaint();
-    shuffleComp.repaint();
 }

@@ -25,6 +25,10 @@ struct SequencerLane
     
     bool forceNextStep = false;
     bool resetValuesAtNextBar = false;
+    
+    // Reset Intervals (0 = OFF, 1, 2, 4, 8, 16, 32, 64, 128)
+    int valueResetInterval = 0;
+    int triggerResetInterval = 0;
 
     // Helper to advance value
     void advanceValue()
@@ -83,6 +87,8 @@ struct PatternData
         std::array<bool, 16> triggers;
         int valueLoopLength = 16;
         int triggerLoopLength = 16;
+        int valueResetInterval = 0;
+        int triggerResetInterval = 0;
         bool enableMasterSource = false;
         bool enableLocalSource = true;
     };
@@ -166,6 +172,10 @@ public:
     long long lastAbsStep = 0;
     double currentPositionInQuarterNotes = 0.0;
     double lastPositionInQuarterNotes = 0.0;
+    
+    // Hold Logic State
+    bool isHoldActive = false;
+    int lastTriggeredNoteIndex = -1;
     
     // Timing Info for Sync
     double lastBarStartPPQ = 0.0;
