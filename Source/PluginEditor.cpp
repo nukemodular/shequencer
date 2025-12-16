@@ -18,11 +18,11 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
           patternSlotsComp.repaint();
           shuffleComp.repaint();
       }),
-      masterTriggerComp(p), bankSelectorComp(p), patternSlotsComp(p), shuffleComp(p)
+      masterTriggerComp(p), bankSelectorComp(p), patternSlotsComp(p), shuffleComp(p), fileOpsComp(p)
 {
     addAndMakeVisible(masterTriggerComp);
     
-    noteLaneComp = std::make_unique<LaneComponent>(p.noteLane, "NOTE", Theme::noteColor, 0, 11);
+    noteLaneComp = std::make_unique<LaneComponent>(p.noteLane, "NOTE", Theme::noteColor, 0, 11, 6);
     noteLaneComp->valueFormatter = [](int val) {
         const char* notes[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         if (val >= 0 && val < 12) return juce::String(notes[val]);
@@ -45,7 +45,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     };
     addAndMakeVisible(*noteLaneComp);
     
-    octaveLaneComp = std::make_unique<LaneComponent>(p.octaveLane, "OCT", Theme::octaveColor, -2, 8);
+    octaveLaneComp = std::make_unique<LaneComponent>(p.octaveLane, "OCT", Theme::octaveColor, -2, 8, 5);
     octaveLaneComp->valueFormatter = [](int val) { return juce::String(val); };
     octaveLaneComp->onStepShiftClicked = [&](int step, bool isTriggerRow) {
         if (isTriggerRow) p.setLaneTriggerIndex(p.octaveLane, step);
@@ -56,7 +56,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     };
     octaveLaneComp->onResetClicked = [&](bool resetAll) {
         if (resetAll) p.resetAllLanes();
-        else p.resetLane(p.octaveLane, 0); // 0
+        else p.resetLane(p.octaveLane, 2); // 2
     };
     octaveLaneComp->onLabelClicked = [&](bool shift) {
         if (shift) p.syncAllToBar();
@@ -64,7 +64,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     };
     addAndMakeVisible(*octaveLaneComp);
     
-    velocityLaneComp = std::make_unique<LaneComponent>(p.velocityLane, "VEL", Theme::velocityColor, 0, 127);
+    velocityLaneComp = std::make_unique<LaneComponent>(p.velocityLane, "VEL", Theme::velocityColor, 0, 127, 63);
     velocityLaneComp->valueFormatter = [](int val) { return juce::String(val); };
     velocityLaneComp->onStepShiftClicked = [&](int step, bool isTriggerRow) {
         if (isTriggerRow) p.setLaneTriggerIndex(p.velocityLane, step);
@@ -83,7 +83,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     };
     addAndMakeVisible(*velocityLaneComp);
     
-    lengthLaneComp = std::make_unique<LaneComponent>(p.lengthLane, "LEN", Theme::lengthColor, 0, 9);
+    lengthLaneComp = std::make_unique<LaneComponent>(p.lengthLane, "LEN", Theme::lengthColor, 0, 9, 5);
     lengthLaneComp->valueFormatter = [](int val) -> juce::String {
         switch(val) {
             case 0: return "OFF";
@@ -119,8 +119,10 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     addAndMakeVisible(bankSelectorComp);
     addAndMakeVisible(patternSlotsComp);
     addAndMakeVisible(shuffleComp);
+    addAndMakeVisible(fileOpsComp);
+    addAndMakeVisible(buildNumberComp);
 
-    setSize (840, 660);
+    setSize (840, 680);
 }
 
 ShequencerAudioProcessorEditor::~ShequencerAudioProcessorEditor()
@@ -143,8 +145,8 @@ void ShequencerAudioProcessorEditor::resized()
     area.removeFromTop(20);
     
     // Fixed height for lanes
-    int gap = 20;
-    int laneHeight = 110;
+    int gap = 10;
+    int laneHeight = 130;
     
     noteLaneComp->setBounds(area.removeFromTop(laneHeight));
     area.removeFromTop(gap);
@@ -165,12 +167,20 @@ void ShequencerAudioProcessorEditor::resized()
     auto leftArea = patternRow.removeFromLeft(60);
     bankSelectorComp.setBounds(leftArea.withSizeKeepingCentre(40, 40));
     
-    // Right: Shuffle (Aligned with Loop Lengths)
-    // Loop Lengths are at width-90 (width 40).
-    // patternRow right margin is 120.
-    auto rightArea = patternRow.removeFromRight(120);
-    // Shuffle should be at x=30 inside rightArea (which corresponds to width-90)
-    shuffleComp.setBounds(rightArea.getX() + 30, rightArea.getY() + 8, 40, 24); // Centered vertically (40-24)/2 = 8
+    // Right: Shuffle (Aligned with Loop Lengths) and FileOps (Aligned with Shift Buttons)
+    // Loop Lengths are at width-120 (Col 1)
+    // Shift Buttons are at width-80 (Col 2)
+    
+    auto rightArea = patternRow.removeFromRight(130);
+    
+    // Shuffle at Col 1 (10 relative to rightArea)
+    shuffleComp.setBounds(rightArea.getX() + 10, rightArea.getY() + 8, 40, 24);
+    
+    // FileOps at Col 2 (50 relative to rightArea)
+    fileOpsComp.setBounds(rightArea.getX() + 10 + 40, rightArea.getY() + 8, 40, 24);
+    
+    // Build Number at Col 3 (90 relative to rightArea)
+    buildNumberComp.setBounds(rightArea.getX() + 10 + 80, rightArea.getY() + 8, 40, 24);
     
     // Middle: Slots
     patternSlotsComp.setBounds(patternRow);

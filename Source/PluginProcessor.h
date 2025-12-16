@@ -29,6 +29,16 @@ struct SequencerLane
     // Reset Intervals (0 = OFF, 1, 2, 4, 8, 16, 32, 64, 128)
     int valueResetInterval = 0;
     int triggerResetInterval = 0;
+    
+    // Randomization Range (0 = Full Random, >0 = +/- Range)
+    int randomRange = 0;
+    
+    enum class Direction { Forward, Backward, PingPong, Bounce, Random, RandomDirection };
+    Direction valueDirection = Direction::Forward;
+    Direction triggerDirection = Direction::Forward;
+    
+    bool valueMovingForward = true;
+    bool triggerMovingForward = true;
 
     // Helper to advance value
     void advanceValue()
@@ -39,11 +49,125 @@ struct SequencerLane
         }
         else
         {
-            currentValueStep = (currentValueStep + 1) % valueLoopLength;
+            auto getNextStep = [&](int current, int len, Direction dir, bool& movingForward) -> int {
+                if (len <= 1) return 0;
+                
+                switch (dir)
+                {
+                    case Direction::Forward:
+                        return (current + 1) % len;
+                        
+                    case Direction::Backward:
+                        return (current - 1 + len) % len;
+                        
+                    case Direction::PingPong: // 0, 1, 2, 2, 1, 0
+                        if (movingForward) {
+                            if (current >= len - 1) {
+                                movingForward = false;
+                                return current; // Repeat end
+                            }
+                            return current + 1;
+                        } else {
+                            if (current <= 0) {
+                                movingForward = true;
+                                return current; // Repeat start
+                            }
+                            return current - 1;
+                        }
+                        
+                    case Direction::Bounce: // 0, 1, 2, 1, 0
+                        if (movingForward) {
+                            if (current >= len - 1) {
+                                movingForward = false;
+                                return len - 2;
+                            }
+                            return current + 1;
+                        } else {
+                            if (current <= 0) {
+                                movingForward = true;
+                                return 1;
+                            }
+                            return current - 1;
+                        }
+                        
+                    case Direction::Random:
+                        return juce::Random::getSystemRandom().nextInt(len);
+
+                    case Direction::RandomDirection:
+                        int stepDir = juce::Random::getSystemRandom().nextBool() ? 1 : -1;
+                        return (current + stepDir + len) % len;
+                }
+                return 0;
+            };
+            
+            currentValueStep = getNextStep(currentValueStep, valueLoopLength, valueDirection, valueMovingForward);
         }
     }
+    
+    void advanceTrigger()
+    {
+        auto getNextStep = [&](int current, int len, Direction dir, bool& movingForward) -> int {
+            if (len <= 1) return 0;
+            
+            switch (dir)
+            {
+                case Direction::Forward:
+                    return (current + 1) % len;
+                    
+                case Direction::Backward:
+                    return (current - 1 + len) % len;
+                    
+                case Direction::PingPong:
+                    if (movingForward) {
+                        if (current >= len - 1) {
+                            movingForward = false;
+                            return current; // Repeat end
+                        }
+                        return current + 1;
+                    } else {
+                        if (current <= 0) {
+                            movingForward = true;
+                            return current; // Repeat start
+                        }
+                        return current - 1;
+                    }
+                    
+                case Direction::Bounce:
+                    if (movingForward) {
+                        if (current >= len - 1) {
+                            movingForward = false;
+                            return len - 2;
+                        }
+                        return current + 1;
+                    } else {
+                        if (current <= 0) {
+                            movingForward = true;
+                            return 1;
+                        }
+                        return current - 1;
+                    }
+                    
+                case Direction::Random:
+                    return juce::Random::getSystemRandom().nextInt(len);
 
-    void reset() { currentValueStep = 0; activeValueStep = 0; forceNextStep = false; }
+                case Direction::RandomDirection:
+                    int stepDir = juce::Random::getSystemRandom().nextBool() ? 1 : -1;
+                    return (current + stepDir + len) % len;
+            }
+            return 0;
+        };
+        
+        currentTriggerStep = getNextStep(currentTriggerStep, triggerLoopLength, triggerDirection, triggerMovingForward);
+    }
+
+    void reset() { 
+        currentValueStep = 0; 
+        activeValueStep = 0; 
+        currentTriggerStep = 0;
+        forceNextStep = false; 
+        valueMovingForward = true;
+        triggerMovingForward = true;
+    }
     
     void shiftValues(int delta)
     {
@@ -89,8 +213,11 @@ struct PatternData
         int triggerLoopLength = 16;
         int valueResetInterval = 0;
         int triggerResetInterval = 0;
+        int randomRange = 0;
         bool enableMasterSource = false;
         bool enableLocalSource = true;
+        int valueDirection = 0; // Stored as int
+        int triggerDirection = 0;
     };
     
     LaneData noteLane;
@@ -137,6 +264,7 @@ public:
     std::array<bool, 16> masterTriggers;
     int masterLength = 16;
     int shuffleAmount = 1; // 1 (Straight) to 7 (Max Swing)
+    int activeShuffleAmount = 1; // Used for audio processing to ensure safe updates
     bool isShuffleGlobal = true;
     
     SequencerLane noteLane;
@@ -153,6 +281,9 @@ public:
     void savePattern(int bank, int slot);
     void loadPattern(int bank, int slot);
     void clearPattern(int bank, int slot);
+    
+    void saveAllPatternsToJson(const juce::File& file);
+    void loadAllPatternsFromJson(const juce::File& file);
     
     void shiftMasterTriggers(int delta);
     

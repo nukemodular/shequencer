@@ -37,3 +37,10 @@ target_link_libraries(shequencer
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+add_custom_target(IncrementBuildNumber
+    COMMAND ${CMAKE_SOURCE_DIR}/increment_build.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Incrementing build number"
+)
+add_dependencies(shequencer IncrementBuildNumber)

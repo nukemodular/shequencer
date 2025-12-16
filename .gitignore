@@ -16,3 +16,11 @@ DerivedData/
 # OS
 .DS_Store
 Thumbs.db
+
+# Artifacts
+*.dmg
+*.pkg
+*.zip
+
+# Jupyter
+*.ipynb
