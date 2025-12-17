@@ -7,17 +7,19 @@ ShequencerAudioProcessor::ShequencerAudioProcessor()
 {
     // Initialize default values
     masterTriggers.fill(false);
+    masterProbEnabled.fill(false);
+    masterProbability = 100;
     
     noteLane.values.fill(0); // C
     noteLane.triggers.fill(true);
     
-    octaveLane.values.fill(2); // Octave 2
+    octaveLane.values.fill(3); // Octave 3
     octaveLane.triggers.fill(true);
     
     velocityLane.values.fill(100);
     velocityLane.triggers.fill(true);
     
-    lengthLane.values.fill(7); // 16th
+    lengthLane.values.fill(5); // 32n
     lengthLane.triggers.fill(true);
     
     activeShuffleAmount = shuffleAmount;
@@ -143,6 +145,9 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             processedMidi.addEvent(msg, metadata.samplePosition);
     }
     midiMessages.swapWith(processedMidi);
+
+    // Apply any pending pattern load (from UI or MIDI)
+    applyPendingPatternLoad();
 
     auto* playHead = getPlayHead();
     if (playHead == nullptr) return;
@@ -365,8 +370,16 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             int l = lengthLane.values[lengthLane.activeValueStep];
             bool isHold = (l == 9);
 
+            // Check Probability
+            bool probCheck = true;
+            if (masterProbEnabled[stepIdx])
+            {
+                int roll = random.nextInt(100);
+                if (roll >= masterProbability) probCheck = false;
+            }
+
             // 2. Play Note (Only if Master Trigger is active OR Hold is active)
-            if (masterTriggers[stepIdx] || (isHold && isHoldActive))
+            if ((masterTriggers[stepIdx] && probCheck) || (isHold && isHoldActive))
             {
                  int n = noteLane.values[noteLane.activeValueStep];
                  int o = octaveLane.values[octaveLane.activeValueStep];
@@ -485,17 +498,17 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
             // 1. Advance Lanes
             auto processLaneAdvancement = [&](SequencerLane& lane) {
-                bool masterHit = lane.enableMasterSource && masterTriggers[stepIdx];
+                bool masterHit = lane.enableMasterSource && masterTriggers[stepIdx] && probCheck;
                 
                 // Use current trigger step state
                 int localStep = lane.currentTriggerStep;
                 bool localHit = lane.enableLocalSource && lane.triggers[localStep];
                 
                 // Advance trigger step for next time
-                lane.advanceTrigger();
+                lane.advanceTrigger(random);
                 
                 if (masterHit || localHit)
-                    lane.advanceValue();
+                    lane.advanceValue(random);
             };
             
             processLaneAdvancement(noteLane);
@@ -747,6 +760,8 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
 {
     if (bank < 0 || bank >= 4 || slot < 0 || slot >= 16) return;
     
+    const juce::ScopedLock sl(patternLock);
+    
     loadedBank = bank;
     loadedSlot = slot;
     
@@ -755,7 +770,9 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
     
     pat.masterLength = masterLength;
     pat.shuffleAmount = shuffleAmount;
+    pat.masterProbability = masterProbability;
     pat.masterTriggers = masterTriggers;
+    pat.masterProbEnabled = masterProbEnabled;
     
     auto copyLane = [](const SequencerLane& src, PatternData::LaneData& dst) {
         dst.values = src.values;
@@ -780,47 +797,77 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
 void ShequencerAudioProcessor::loadPattern(int bank, int slot)
 {
     if (bank < 0 || bank >= 4 || slot < 0 || slot >= 16) return;
+    pendingLoadBank = bank;
+    pendingLoadSlot = slot;
+}
+
+void ShequencerAudioProcessor::applyPendingPatternLoad()
+{
+    int slot = pendingLoadSlot.load();
+    int bank = pendingLoadBank.load();
     
-    const auto& pat = patternBanks[bank][slot];
-    if (pat.isEmpty) return;
+    if (slot == -1 || bank == -1) return;
     
-    loadedBank = bank;
-    loadedSlot = slot;
-    
-    masterLength = pat.masterLength;
-    if (!isShuffleGlobal) shuffleAmount = pat.shuffleAmount;
-    masterTriggers = pat.masterTriggers;
-    
-    auto loadLane = [](SequencerLane& dst, const PatternData::LaneData& src) {
-        dst.values = src.values;
-        dst.triggers = src.triggers;
-        dst.valueLoopLength = src.valueLoopLength;
-        dst.triggerLoopLength = src.triggerLoopLength;
-        dst.valueResetInterval = src.valueResetInterval;
-        dst.triggerResetInterval = src.triggerResetInterval;
-        dst.randomRange = src.randomRange;
-        dst.enableMasterSource = src.enableMasterSource;
-        dst.enableLocalSource = src.enableLocalSource;
-        dst.valueDirection = (SequencerLane::Direction)src.valueDirection;
-        dst.triggerDirection = (SequencerLane::Direction)src.triggerDirection;
-    };
-    
-    loadLane(noteLane, pat.noteLane);
-    loadLane(octaveLane, pat.octaveLane);
-    loadLane(velocityLane, pat.velocityLane);
-    loadLane(lengthLane, pat.lengthLane);
-    
-    // Reset Playheads on Pattern Load
-    noteLane.reset();
-    octaveLane.reset();
-    velocityLane.reset();
-    lengthLane.reset();
+    // Try to get lock - if failed (e.g. UI saving), skip this block
+    if (patternLock.tryEnter())
+    {
+        if (bank >= 0 && bank < 4 && slot >= 0 && slot < 16)
+        {
+            const auto& pat = patternBanks[bank][slot];
+            if (!pat.isEmpty)
+            {
+                loadedBank = bank;
+                loadedSlot = slot;
+                
+                masterLength = pat.masterLength;
+                if (!isShuffleGlobal) shuffleAmount = pat.shuffleAmount;
+                masterProbability = pat.masterProbability;
+                masterTriggers = pat.masterTriggers;
+                masterProbEnabled = pat.masterProbEnabled;
+                
+                auto loadLane = [](SequencerLane& dst, const PatternData::LaneData& src) {
+                    dst.values = src.values;
+                    dst.triggers = src.triggers;
+                    dst.valueLoopLength = src.valueLoopLength;
+                    dst.triggerLoopLength = src.triggerLoopLength;
+                    dst.valueResetInterval = src.valueResetInterval;
+                    dst.triggerResetInterval = src.triggerResetInterval;
+                    dst.randomRange = src.randomRange;
+                    dst.enableMasterSource = src.enableMasterSource;
+                    dst.enableLocalSource = src.enableLocalSource;
+                    dst.valueDirection = (SequencerLane::Direction)src.valueDirection;
+                    dst.triggerDirection = (SequencerLane::Direction)src.triggerDirection;
+                };
+                
+                loadLane(noteLane, pat.noteLane);
+                loadLane(octaveLane, pat.octaveLane);
+                loadLane(velocityLane, pat.velocityLane);
+                loadLane(lengthLane, pat.lengthLane);
+                
+                // Reset Playheads on Pattern Load
+                noteLane.reset();
+                octaveLane.reset();
+                velocityLane.reset();
+                lengthLane.reset();
+            }
+        }
+        
+        pendingLoadSlot = -1;
+        pendingLoadBank = -1;
+        
+        patternLock.exit();
+    }
 }
 
 void ShequencerAudioProcessor::clearPattern(int bank, int slot)
 {
     if (bank < 0 || bank >= 4 || slot < 0 || slot >= 16) return;
+    
+    const juce::ScopedLock sl(patternLock);
+    
     patternBanks[bank][slot].isEmpty = true;
+    patternBanks[bank][slot].masterProbEnabled.fill(false);
+    patternBanks[bank][slot].masterProbability = 100;
 }
 
 void ShequencerAudioProcessor::saveAllPatternsToJson(const juce::File& file)
@@ -828,60 +875,69 @@ void ShequencerAudioProcessor::saveAllPatternsToJson(const juce::File& file)
     juce::var root(new juce::DynamicObject());
     juce::Array<juce::var> banks;
     
-    for (int b = 0; b < 4; ++b)
     {
-        juce::var bankObj(new juce::DynamicObject());
-        bankObj.getDynamicObject()->setProperty("index", b);
+        const juce::ScopedLock sl(patternLock);
         
-        juce::Array<juce::var> patterns;
-        
-        for (int s = 0; s < 16; ++s)
+        for (int b = 0; b < 4; ++b)
         {
-            const auto& pat = patternBanks[b][s];
-            if (!pat.isEmpty)
+            juce::var bankObj(new juce::DynamicObject());
+            bankObj.getDynamicObject()->setProperty("index", b);
+            
+            juce::Array<juce::var> patterns;
+            
+            for (int s = 0; s < 16; ++s)
             {
-                juce::var patObj(new juce::DynamicObject());
-                patObj.getDynamicObject()->setProperty("slot", s);
-                patObj.getDynamicObject()->setProperty("masterLength", pat.masterLength);
-                patObj.getDynamicObject()->setProperty("shuffleAmount", pat.shuffleAmount);
-                
-                juce::String mTrig;
-                for (bool v : pat.masterTriggers) mTrig += (v ? "1" : "0");
-                patObj.getDynamicObject()->setProperty("masterTriggers", mTrig);
-                
-                auto savePatLane = [&](const PatternData::LaneData& ld, juce::String name) {
-                    juce::var lObj(new juce::DynamicObject());
-                    lObj.getDynamicObject()->setProperty("valueLoopLength", ld.valueLoopLength);
-                    lObj.getDynamicObject()->setProperty("triggerLoopLength", ld.triggerLoopLength);
-                    lObj.getDynamicObject()->setProperty("valueResetInterval", ld.valueResetInterval);
-                    lObj.getDynamicObject()->setProperty("triggerResetInterval", ld.triggerResetInterval);
-                    lObj.getDynamicObject()->setProperty("randomRange", ld.randomRange);
-                    lObj.getDynamicObject()->setProperty("enableMasterSource", ld.enableMasterSource);
-                    lObj.getDynamicObject()->setProperty("enableLocalSource", ld.enableLocalSource);
-                    lObj.getDynamicObject()->setProperty("valueDirection", ld.valueDirection);
-                    lObj.getDynamicObject()->setProperty("triggerDirection", ld.triggerDirection);
+                const auto& pat = patternBanks[b][s];
+                if (!pat.isEmpty)
+                {
+                    juce::var patObj(new juce::DynamicObject());
+                    patObj.getDynamicObject()->setProperty("slot", s);
+                    patObj.getDynamicObject()->setProperty("masterLength", pat.masterLength);
+                    patObj.getDynamicObject()->setProperty("shuffleAmount", pat.shuffleAmount);
+                    patObj.getDynamicObject()->setProperty("masterProbability", pat.masterProbability);
                     
-                    juce::String vStr;
-                    for (int v : ld.values) vStr += juce::String(v) + ",";
-                    lObj.getDynamicObject()->setProperty("values", vStr);
+                    juce::String mTrig;
+                    for (bool v : pat.masterTriggers) mTrig += (v ? "1" : "0");
+                    patObj.getDynamicObject()->setProperty("masterTriggers", mTrig);
+
+                    juce::String mProb;
+                    for (bool v : pat.masterProbEnabled) mProb += (v ? "1" : "0");
+                    patObj.getDynamicObject()->setProperty("masterProbEnabled", mProb);
                     
-                    juce::String tStr;
-                    for (bool v : ld.triggers) tStr += (v ? "1" : "0");
-                    lObj.getDynamicObject()->setProperty("triggers", tStr);
+                    auto savePatLane = [&](const PatternData::LaneData& ld, juce::String name) {
+                        juce::var lObj(new juce::DynamicObject());
+                        lObj.getDynamicObject()->setProperty("valueLoopLength", ld.valueLoopLength);
+                        lObj.getDynamicObject()->setProperty("triggerLoopLength", ld.triggerLoopLength);
+                        lObj.getDynamicObject()->setProperty("valueResetInterval", ld.valueResetInterval);
+                        lObj.getDynamicObject()->setProperty("triggerResetInterval", ld.triggerResetInterval);
+                        lObj.getDynamicObject()->setProperty("randomRange", ld.randomRange);
+                        lObj.getDynamicObject()->setProperty("enableMasterSource", ld.enableMasterSource);
+                        lObj.getDynamicObject()->setProperty("enableLocalSource", ld.enableLocalSource);
+                        lObj.getDynamicObject()->setProperty("valueDirection", ld.valueDirection);
+                        lObj.getDynamicObject()->setProperty("triggerDirection", ld.triggerDirection);
+                        
+                        juce::String vStr;
+                        for (int v : ld.values) vStr += juce::String(v) + ",";
+                        lObj.getDynamicObject()->setProperty("values", vStr);
+                        
+                        juce::String tStr;
+                        for (bool v : ld.triggers) tStr += (v ? "1" : "0");
+                        lObj.getDynamicObject()->setProperty("triggers", tStr);
+                        
+                        patObj.getDynamicObject()->setProperty(name, lObj);
+                    };
                     
-                    patObj.getDynamicObject()->setProperty(name, lObj);
-                };
-                
-                savePatLane(pat.noteLane, "NOTE_LANE");
-                savePatLane(pat.octaveLane, "OCTAVE_LANE");
-                savePatLane(pat.velocityLane, "VELOCITY_LANE");
-                savePatLane(pat.lengthLane, "LENGTH_LANE");
-                
-                patterns.add(patObj);
+                    savePatLane(pat.noteLane, "NOTE_LANE");
+                    savePatLane(pat.octaveLane, "OCTAVE_LANE");
+                    savePatLane(pat.velocityLane, "VELOCITY_LANE");
+                    savePatLane(pat.lengthLane, "LENGTH_LANE");
+                    
+                    patterns.add(patObj);
+                }
             }
+            bankObj.getDynamicObject()->setProperty("patterns", patterns);
+            banks.add(bankObj);
         }
-        bankObj.getDynamicObject()->setProperty("patterns", patterns);
-        banks.add(bankObj);
     }
     
     root.getDynamicObject()->setProperty("banks", banks);
@@ -894,6 +950,8 @@ void ShequencerAudioProcessor::loadAllPatternsFromJson(const juce::File& file)
 {
     juce::var root = juce::JSON::parse(file);
     if (!root.isObject()) return;
+    
+    const juce::ScopedLock sl(patternLock);
     
     // Clear existing patterns
     for(auto& bank : patternBanks)
@@ -922,9 +980,13 @@ void ShequencerAudioProcessor::loadAllPatternsFromJson(const juce::File& file)
                             pat.isEmpty = false;
                             pat.masterLength = patObj.getProperty("masterLength", 16);
                             pat.shuffleAmount = patObj.getProperty("shuffleAmount", 1);
+                            pat.masterProbability = patObj.getProperty("masterProbability", 100);
                             
                             juce::String mTrig = patObj.getProperty("masterTriggers", "").toString();
                             for(int k=0; k<16 && k<mTrig.length(); ++k) pat.masterTriggers[k] = (mTrig[k] == '1');
+
+                            juce::String mProb = patObj.getProperty("masterProbEnabled", "").toString();
+                            for(int k=0; k<16 && k<mProb.length(); ++k) pat.masterProbEnabled[k] = (mProb[k] == '1');
                             
                             auto loadPatLane = [&](PatternData::LaneData& ld, juce::String name) {
                                 auto lObj = patObj.getProperty(name, juce::var());
@@ -971,6 +1033,10 @@ void ShequencerAudioProcessor::shiftMasterTriggers(int delta)
     auto end = masterTriggers.begin() + len;
 
     std::rotate(start, end - delta, end);
+    
+    auto startProb = masterProbEnabled.begin();
+    auto endProb = masterProbEnabled.begin() + len;
+    std::rotate(startProb, endProb - delta, endProb);
 }
 
 void ShequencerAudioProcessor::setGlobalStepIndex(int targetIndex)
@@ -1017,9 +1083,9 @@ void ShequencerAudioProcessor::resetLane(SequencerLane& lane, int defaultValue)
 void ShequencerAudioProcessor::resetAllLanes()
 {
     resetLane(noteLane, 0);      // C
-    resetLane(octaveLane, 2);    // 2
+    resetLane(octaveLane, 3);    // 3
     resetLane(velocityLane, 64); // 64
-    resetLane(lengthLane, 7);    // 16n
+    resetLane(lengthLane, 5);    // 32n
     
     masterTriggers.fill(true);
     masterLength = 16;

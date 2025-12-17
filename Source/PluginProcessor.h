@@ -42,7 +42,7 @@ struct SequencerLane
     bool triggerMovingForward = true;
 
     // Helper to advance value
-    void advanceValue()
+    void advanceValue(juce::Random& r)
     {
         if (forceNextStep)
         {
@@ -92,10 +92,10 @@ struct SequencerLane
                         }
                         
                     case Direction::Random:
-                        return juce::Random::getSystemRandom().nextInt(len);
+                        return r.nextInt(len);
 
                     case Direction::RandomDirection:
-                        int stepDir = juce::Random::getSystemRandom().nextBool() ? 1 : -1;
+                        int stepDir = r.nextBool() ? 1 : -1;
                         return (current + stepDir + len) % len;
                 }
                 return 0;
@@ -105,7 +105,7 @@ struct SequencerLane
         }
     }
     
-    void advanceTrigger()
+    void advanceTrigger(juce::Random& r)
     {
         auto getNextStep = [&](int current, int len, Direction dir, bool& movingForward) -> int {
             if (len <= 1) return 0;
@@ -149,10 +149,10 @@ struct SequencerLane
                     }
                     
                 case Direction::Random:
-                    return juce::Random::getSystemRandom().nextInt(len);
+                    return r.nextInt(len);
 
                 case Direction::RandomDirection:
-                    int stepDir = juce::Random::getSystemRandom().nextBool() ? 1 : -1;
+                    int stepDir = r.nextBool() ? 1 : -1;
                     return (current + stepDir + len) % len;
             }
             return 0;
@@ -204,8 +204,10 @@ struct PatternData
     
     // Master
     std::array<bool, 16> masterTriggers;
+    std::array<bool, 16> masterProbEnabled; // Probability Step Toggle
     int masterLength = 16;
     int shuffleAmount = 1;
+    int masterProbability = 100; // 0-100%
     
     // Lanes
     struct LaneData {
@@ -264,11 +266,15 @@ public:
 
     // Sequencer Data
     std::array<bool, 16> masterTriggers;
+    std::array<bool, 16> masterProbEnabled;
     int masterLength = 16;
     int shuffleAmount = 1; // 1 (Straight) to 7 (Max Swing)
+    int masterProbability = 100; // 0-100%
     int activeShuffleAmount = 1; // Used for audio processing to ensure safe updates
     bool isShuffleGlobal = true;
     
+    juce::Random random; // Member random object for audio thread safety
+
     SequencerLane noteLane;
     SequencerLane octaveLane;
     SequencerLane velocityLane;
@@ -280,8 +286,13 @@ public:
     int loadedBank = -1;
     int loadedSlot = -1;
     
+    juce::CriticalSection patternLock;
+    std::atomic<int> pendingLoadBank{ -1 };
+    std::atomic<int> pendingLoadSlot{ -1 };
+    
     void savePattern(int bank, int slot);
     void loadPattern(int bank, int slot);
+    void applyPendingPatternLoad();
     void clearPattern(int bank, int slot);
     
     void saveAllPatternsToJson(const juce::File& file);

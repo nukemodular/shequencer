@@ -15,7 +15,7 @@ namespace Theme
     static const juce::Colour masterColor(0xFFE0E329);
     static const juce::Colour slotsColor(0xFF40FF99);
     
-    static juce::Font getValueFont() { return juce::Font("Arial", 50.0f, juce::Font::bold); }
+    static juce::Font getValueFont() { return juce::FontOptions("Arial", 50.0f, juce::Font::bold); }
 }
 
 class LaneComponent : public juce::Component
@@ -77,7 +77,7 @@ public:
         g.fillRect(resetBtnRect);
         
         g.setColour(juce::Colours::black);
-        g.setFont(juce::Font("Arial", 16.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 16.0f, juce::Font::bold));
         
         juce::String labelText = laneName;
         if (laneName == "NOTE") labelText = "NO\nTE";
@@ -189,7 +189,7 @@ public:
         */
 
         g.setColour(laneColor);
-        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         
         // Draw Value Loop Control (Outline only)
         g.drawRect(valLoopRect);
@@ -296,7 +296,7 @@ public:
         // Draw Random Range Slider
         g.setColour(laneColor);
         g.drawRect(randomRangeRect);
-        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         juce::String rangeText = (laneData.randomRange == 0) ? "FULL" : ("+/-" + juce::String(laneData.randomRange));
         g.drawText(rangeText, randomRangeRect, juce::Justification::centred);
 
@@ -984,7 +984,7 @@ public:
             g.drawRect(area);
         }
         
-        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         g.drawText("S:" + juce::String(processor.shuffleAmount), area, juce::Justification::centred);
     }
     
@@ -1032,7 +1032,7 @@ public:
         // Color same as shuffle (Theme::slotsColor) but alpha 0.33f
         g.setColour(Theme::slotsColor.withAlpha(0.33f));
         
-        g.setFont(juce::Font("Arial", 10.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 10.0f, juce::Font::bold));
         
         juce::String buildStr = juce::String::formatted("b.%03d", BUILD_NUMBER);
         g.drawText(buildStr, area, juce::Justification::centred);
@@ -1059,7 +1059,7 @@ public:
         g.drawRect(loadRect);
         g.drawRect(saveRect);
         
-        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         g.drawText("L", loadRect, juce::Justification::centred);
         g.drawText("S", saveRect, juce::Justification::centred);
     }
@@ -1144,58 +1144,29 @@ public:
         g.fillRect(resetBtnRect);
         
         g.setColour(juce::Colours::black);
-        g.setFont(juce::Font("Arial", 16.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 16.0f, juce::Font::bold));
         g.drawFittedText("GA\nTE", resetBtnRect, juce::Justification::centred, 2);
         
         // Draw Length Control (Col A)
         int rightMarginX = getWidth() - 120;
         int col1_X = rightMarginX;
-        int col2_X = rightMarginX + 40;
         
-        int ctrlH = 18;
-        // int gap = 1; // Unused here but consistent with LaneComponent
+        // Top Row: Shift L | Length | Shift R
+        int topRowH = 24;
         
-        // Center vertically in the available height (which is ~24px? No, MasterTriggerComponent height is likely same as LaneComponent height? No, it's just the trigger row height usually?)
-        // Wait, MasterTriggerComponent is likely just the height of the trigger row + some margin?
-        // In PluginEditor.cpp (not visible here), it's likely resized.
-        // Assuming it has enough height. If it's short (e.g. 24px), we can't stack controls.
-        // Let's check resized() in PluginEditor.cpp if possible, or assume it's similar to a lane but maybe shorter.
-        // Actually, MasterTriggerComponent usually sits at the top.
-        // If it's short, we can't do the 2-row layout.
-        // The previous code used:
-        // juce::Rectangle<int> lenRect(colB_X, 0, 40, getHeight());
-        // lenRect = lenRect.withSizeKeepingCentre(40, 24).reduced(2);
-        // This implies it's a single row.
-        
-        // User said: "step-length, left-shift,right-shift...this way we can position bar-reset below/above step-length"
-        // But MasterTriggerComponent only has Length and Shift. It doesn't have Reset Interval or Direction (yet).
-        // It has a "Reset" button (circle).
-        // So for MasterTriggerComponent, we should probably just adopt the [Length] [ShiftL] [ShiftR] order.
-        
-        juce::Rectangle<int> shiftL(col1_X, 0, 20, getHeight());
-        shiftL = shiftL.withSizeKeepingCentre(20, 24).reduced(1);
+        juce::Rectangle<int> shiftL(col1_X, 0, 20, topRowH);
+        shiftL = shiftL.reduced(1);
 
-        juce::Rectangle<int> lenRect(col1_X + 20, 0, 40, getHeight());
-        lenRect = lenRect.withSizeKeepingCentre(40, 24).reduced(1);
+        juce::Rectangle<int> lenRect(col1_X + 20, 0, 40, topRowH);
+        lenRect = lenRect.reduced(1);
+
+        juce::Rectangle<int> shiftR(col1_X + 60, 0, 20, topRowH);
+        shiftR = shiftR.reduced(1);
 
         g.setColour(Theme::masterColor);
         g.drawRect(lenRect);
-        g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         g.drawText(juce::String(processor.masterLength), lenRect, juce::Justification::centred);
-        
-        // Shift Buttons
-        juce::Rectangle<int> shiftR(col1_X + 60, 0, 20, getHeight());
-        shiftR = shiftR.withSizeKeepingCentre(20, 24).reduced(1);
-        
-        // Reset Button - Removed
-        /*
-        int resetX = col2_X + 55;
-        int resetY = getHeight() / 2;
-        float resetRadius = 4.0f;
-        
-        g.setColour(Theme::masterColor);
-        g.drawEllipse(resetX - resetRadius, resetY - resetRadius, resetRadius * 2, resetRadius * 2, 1.0f);
-        */
         
         auto drawTriangle = [&](juce::Rectangle<int> r, bool left) {
             juce::Path p;
@@ -1225,6 +1196,27 @@ public:
         drawTriangle(shiftL, true);
         drawTriangle(shiftR, false);
         
+        // Probability Slider (Below Top Row)
+        // Full width of the 3 buttons (20+40+20 = 80)
+        // Height 14px
+        int sliderY = topRowH + 2;
+        int sliderH = 12; // Reduced slightly to ensure it fits
+        juce::Rectangle<int> probRect(col1_X, sliderY, 80, sliderH);
+        probRect = probRect.reduced(1);
+        
+        g.setColour(Theme::masterColor.withAlpha(0.2f));
+        g.fillRect(probRect); // Background track
+        
+        g.setColour(Theme::masterColor);
+        g.drawRect(probRect); // Outline
+        
+        if (processor.masterProbability > 0)
+        {
+            float fillW = (float)probRect.getWidth() * ((float)processor.masterProbability / 100.0f);
+            g.fillRect((float)probRect.getX(), (float)probRect.getY(), fillW, (float)probRect.getHeight());
+        }
+        
+        // Steps
         float stepWidth = area.getWidth() / 16.0f;
         
         for (int i = 0; i < 16; ++i)
@@ -1241,6 +1233,25 @@ public:
             {
                 g.setColour(Theme::masterColor.withAlpha(alpha));
                 g.fillRect(stepArea.reduced(2));
+                
+                // Draw PROB indicator (Black Square - Hole)
+                if (processor.masterProbEnabled[i])
+                {
+                    g.setColour(juce::Colours::black);
+                    g.fillRect(stepArea.withSizeKeepingCentre(12, 12));
+                }
+            }
+            else
+            {
+                // Draw PROB indicator (Colored Square - Visible on Black)
+                // Removed as per user request ("no need for the small yellow square")
+                /*
+                if (processor.masterProbEnabled[i])
+                {
+                    g.setColour(Theme::masterColor.withAlpha(alpha));
+                    g.fillRect(stepArea.withSizeKeepingCentre(8, 8));
+                }
+                */
             }
             
             // Highlight current master step
@@ -1275,10 +1286,11 @@ public:
         
         int rightMarginX = getWidth() - 120;
         int col1_X = rightMarginX;
-        int col2_X = rightMarginX + 40;
+        
+        int topRowH = 24;
         
         // Handle Length (Col A)
-        if (e.x >= col1_X + 20 && e.x < col1_X + 60)
+        if (e.x >= col1_X + 20 && e.x < col1_X + 60 && e.y < topRowH)
         {
             isDraggingLength = true;
             lastMouseX = e.x;
@@ -1287,7 +1299,7 @@ public:
         }
         
         // Handle Shift L
-        if (e.x >= col1_X && e.x < col1_X + 20)
+        if (e.x >= col1_X && e.x < col1_X + 20 && e.y < topRowH)
         {
             processor.shiftMasterTriggers(-1);
             repaint();
@@ -1295,32 +1307,22 @@ public:
         }
         
         // Handle Shift R
-        if (e.x >= col1_X + 60 && e.x < col1_X + 80)
+        if (e.x >= col1_X + 60 && e.x < col1_X + 80 && e.y < topRowH)
         {
             processor.shiftMasterTriggers(1);
             repaint();
             return;
         }
         
-        // Handle Reset - Removed
-        /*
-        int resetX = col2_X + 55;
-        int resetY = getHeight() / 2;
-        if (std::abs(e.x - resetX) < 10 && std::abs(e.y - resetY) < 10)
+        // Handle Probability Slider
+        int sliderY = topRowH + 2;
+        int sliderH = 14;
+        if (e.x >= col1_X && e.x < col1_X + 80 && e.y >= sliderY && e.y < sliderY + sliderH)
         {
-            if (e.mods.isAltDown())
-            {
-                processor.resetAllLanes();
-            }
-            else
-            {
-                processor.masterTriggers.fill(true);
-                processor.masterLength = 16;
-            }
-            repaint();
+            isDraggingProbability = true;
+            updateProbability(e.x, col1_X, 80);
             return;
         }
-        */
             
         area.removeFromRight(130); // Match LaneComponent layout
         
@@ -1331,7 +1333,17 @@ public:
         {
             if (e.mods.isShiftDown())
             {
-                processor.setGlobalStepIndex(stepIdx);
+                // Toggle Probability Step
+                targetProbState = !processor.masterProbEnabled[stepIdx];
+                processor.masterProbEnabled[stepIdx] = targetProbState;
+                
+                // If enabling probability on an empty step, turn the step ON
+                if (targetProbState && !processor.masterTriggers[stepIdx])
+                {
+                    processor.masterTriggers[stepIdx] = true;
+                }
+                
+                lastEditedStep = stepIdx;
                 repaint();
                 return;
             }
@@ -1339,6 +1351,11 @@ public:
             lastEditedStep = stepIdx;
             targetTriggerState = !processor.masterTriggers[stepIdx];
             processor.masterTriggers[stepIdx] = targetTriggerState;
+            
+            // If turning OFF gate, also disable probability to avoid "small yellow square" state
+            if (!targetTriggerState)
+                processor.masterProbEnabled[stepIdx] = false;
+                
             repaint();
         }
     }
@@ -1359,8 +1376,16 @@ public:
             }
             return;
         }
+        
+        if (isDraggingProbability)
+        {
+            int rightMarginX = getWidth() - 120;
+            int col1_X = rightMarginX;
+            updateProbability(e.x, col1_X, 80);
+            return;
+        }
 
-        if (e.mods.isShiftDown()) return;
+        // if (e.mods.isShiftDown()) return; // Allow shift-drag
 
         if (e.x >= 60 && e.x <= getWidth() - 130)
         {
@@ -1373,7 +1398,21 @@ public:
             if (stepIdx >= 0 && stepIdx < 16 && stepIdx != lastEditedStep)
             {
                 lastEditedStep = stepIdx;
-                processor.masterTriggers[stepIdx] = targetTriggerState;
+                
+                if (e.mods.isShiftDown())
+                {
+                    // Dragging Probability
+                    processor.masterProbEnabled[stepIdx] = targetProbState;
+                    if (targetProbState && !processor.masterTriggers[stepIdx])
+                        processor.masterTriggers[stepIdx] = true;
+                }
+                else
+                {
+                    // Dragging Gate
+                    processor.masterTriggers[stepIdx] = targetTriggerState;
+                    if (!targetTriggerState)
+                        processor.masterProbEnabled[stepIdx] = false;
+                }
                 repaint();
             }
         }
@@ -1382,16 +1421,27 @@ public:
     void mouseUp(const juce::MouseEvent&) override
     {
         isDraggingLength = false;
+        isDraggingProbability = false;
     }
 
 private:
     ShequencerAudioProcessor& processor;
     int lastEditedStep = -1;
     bool targetTriggerState = false;
+    bool targetProbState = false;
     
     bool isDraggingLength = false;
+    bool isDraggingProbability = false;
     int lastMouseX = 0;
     int lastMouseY = 0;
+    
+    void updateProbability(int mouseX, int x, int w)
+    {
+        float norm = (float)(mouseX - x) / (float)w;
+        norm = juce::jlimit(0.0f, 1.0f, norm);
+        processor.masterProbability = (int)(norm * 100.0f);
+        repaint();
+    }
 };
 
 class BankSelectorComponent : public juce::Component
@@ -1422,7 +1472,7 @@ public:
             else g.drawRect(btnRect);
             
             g.setColour(isSelected ? juce::Colours::black : Theme::slotsColor);
-            g.setFont(juce::Font("Arial", 12.0f, juce::Font::bold));
+            g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
             g.drawText(labels[i], btnRect, juce::Justification::centred);
         }
     }
@@ -1472,8 +1522,11 @@ public:
             // Draw Loaded Indicator
             if (processor.currentBank == processor.loadedBank && i == processor.loadedSlot)
             {
+                int globalSlotNum = (processor.currentBank * 16) + i + 1;
+                
                 g.setColour(juce::Colours::black);
-                g.fillRect(slotRect.withSizeKeepingCentre(10, 10));
+                g.setFont(juce::FontOptions("Arial", (float)slotRect.getHeight() * 0.8f, juce::Font::bold));
+                g.drawText(juce::String(globalSlotNum), slotRect, juce::Justification::centred);
             }
         }
     }

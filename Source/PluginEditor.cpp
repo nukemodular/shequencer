@@ -173,11 +173,11 @@ void ShequencerAudioProcessorEditor::resized()
     
     auto rightArea = patternRow.removeFromRight(130);
     
-    // Shuffle at Col 1 (10 relative to rightArea)
-    shuffleComp.setBounds(rightArea.getX() + 10, rightArea.getY() + 8, 40, 24);
+    // Shuffle at Col 2 (50 relative to rightArea)
+    shuffleComp.setBounds(rightArea.getX() + 10 + 40, rightArea.getY() + 8, 40, 24);
     
-    // FileOps at Col 2 (50 relative to rightArea)
-    fileOpsComp.setBounds(rightArea.getX() + 10 + 40, rightArea.getY() + 8, 40, 24);
+    // FileOps at Col 1 (10 relative to rightArea)
+    fileOpsComp.setBounds(rightArea.getX() + 10, rightArea.getY() + 8, 40, 24);
     
     // Build Number at Col 3 (90 relative to rightArea)
     buildNumberComp.setBounds(rightArea.getX() + 10 + 80, rightArea.getY() + 8, 40, 24);
