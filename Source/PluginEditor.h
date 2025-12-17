@@ -14,6 +14,7 @@ namespace Theme
     static const juce::Colour lengthColor(0xFFA228FF);
     static const juce::Colour masterColor(0xFFE0E329);
     static const juce::Colour slotsColor(0xFF40FF99);
+    static const juce::Colour controllerColor(0xFFFF0050);
     
     static juce::Font getValueFont() { return juce::FontOptions("Arial", 50.0f, juce::Font::bold); }
 }
@@ -21,8 +22,8 @@ namespace Theme
 class LaneComponent : public juce::Component
 {
 public:
-    LaneComponent(SequencerLane& lane, juce::String name, juce::Colour color, int minVal, int maxVal, int maxRandomRange)
-        : laneData(lane), laneName(name), laneColor(color), minVal(minVal), maxVal(maxVal), maxRandomRange(maxRandomRange)
+    LaneComponent(SequencerLane& lane, juce::String name, juce::Colour color, int minV, int maxV, int maxRR)
+        : laneData(lane), laneName(name), laneColor(color), minVal(minV), maxVal(maxV), maxRandomRange(maxRR)
     {
     }
     
@@ -30,6 +31,8 @@ public:
     std::function<void(int, bool)> onStepShiftClicked;
     std::function<void(bool)> onResetClicked;
     std::function<void(bool)> onLabelClicked; // bool isShift
+    
+    void setLaneName(juce::String newName) { laneName = newName; repaint(); }
     
     void tick()
     {
@@ -49,11 +52,11 @@ public:
         int h = getHeight();
         int triggerHeight = 24;
         int barAreaHeight = h - triggerHeight;
-        int reducedBarHeight = barAreaHeight;
+        int reducedBarHeight = barAreaHeight - 1;
         int barTopY = 0;
         
         // Left Controls (Toggles)
-        auto leftArea = area.removeFromLeft(60);
+        area.removeFromLeft(60);
         
         // Draw Toggles
         // L aligned with step sequencer buttons (bottom)
@@ -84,20 +87,27 @@ public:
         else if (laneName == "OCT") labelText = "OC\nTA\nVE";
         else if (laneName == "VEL") labelText = "VEL\nOC\nITY";
         else if (laneName == "LEN") labelText = "LE\nNG\nTH";
+        else if (laneName.startsWith("CC ")) labelText = laneName.replace(" ", "\n");
         
         g.drawFittedText(labelText, resetBtnRect, juce::Justification::centred, 3);
         
         // Master Toggle (Yellow)
-        g.setColour(Theme::masterColor.withAlpha(laneData.enableMasterSource ? 1.0f : 0.33f));
-        g.fillRect(masterToggle);
         g.setColour(Theme::masterColor);
-        g.drawRect(masterToggle);
+        g.fillRect(masterToggle);
+        g.setColour(juce::Colours::black);
+        g.fillRect(masterToggle.reduced(1));
+        
+        g.setColour(Theme::masterColor.withAlpha(laneData.enableMasterSource ? 1.0f : 0.33f));
+        g.fillRect(masterToggle.reduced(1));
         
         // Local Toggle (Lane Color)
-        g.setColour(laneColor.withAlpha(laneData.enableLocalSource ? 1.0f : 0.33f));
-        g.fillRect(localToggle);
         g.setColour(laneColor);
-        g.drawRect(localToggle);
+        g.fillRect(localToggle);
+        g.setColour(juce::Colours::black);
+        g.fillRect(localToggle.reduced(1));
+        
+        g.setColour(laneColor.withAlpha(laneData.enableLocalSource ? 1.0f : 0.33f));
+        g.fillRect(localToggle.reduced(1));
 
         // Right Controls (Loop Lengths)
         // Align with Left Controls (M/L)
@@ -192,39 +202,57 @@ public:
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         
         // Draw Value Loop Control (Outline only)
-        g.drawRect(valLoopRect);
+        g.fillRect(valLoopRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(valLoopRect.reduced(1));
+        g.setColour(laneColor);
         g.drawText(juce::String(laneData.valueLoopLength), valLoopRect, juce::Justification::centred);
         
         // Draw Value Reset Control
-        g.drawRect(valResetRect);
-        g.drawText(laneData.valueResetInterval == 0 ? "OFF" : juce::String(laneData.valueResetInterval), valResetRect, juce::Justification::centred);
+        g.fillRect(valResetRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(valResetRect.reduced(1));
+        g.setColour(laneColor);
+        g.drawText(laneData.valueResetInterval == 0 ? "FREE" : juce::String(laneData.valueResetInterval), valResetRect, juce::Justification::centred);
 
         // Draw Value Direction Control
-        g.drawRect(valDirRect);
+        g.fillRect(valDirRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(valDirRect.reduced(1));
+        g.setColour(laneColor);
         g.drawText(getDirectionString(laneData.valueDirection), valDirRect, juce::Justification::centred);
         
         // Draw Trigger Reset Control
-        g.drawRect(trigResetRect);
-        g.drawText(laneData.triggerResetInterval == 0 ? "OFF" : juce::String(laneData.triggerResetInterval), trigResetRect, juce::Justification::centred);
+        g.fillRect(trigResetRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(trigResetRect.reduced(1));
+        g.setColour(laneColor);
+        g.drawText(laneData.triggerResetInterval == 0 ? "FREE" : juce::String(laneData.triggerResetInterval), trigResetRect, juce::Justification::centred);
 
         // Draw Trigger Direction Control
-        g.drawRect(trigDirRect);
+        g.fillRect(trigDirRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(trigDirRect.reduced(1));
+        g.setColour(laneColor);
         g.drawText(getDirectionString(laneData.triggerDirection), trigDirRect, juce::Justification::centred);
         
         // Draw Trigger Loop Control (Outline only)
-        g.drawRect(trigLoopRect);
+        g.fillRect(trigLoopRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(trigLoopRect.reduced(1));
+        g.setColour(laneColor);
         g.drawText(juce::String(laneData.triggerLoopLength), trigLoopRect, juce::Justification::centred);
         
         // Draw Shift Triangles
         auto drawTriangle = [&](juce::Rectangle<int> r, bool left) {
             juce::Path p;
             float w = (float)r.getWidth();
-            float h = (float)r.getHeight();
+            float th = (float)r.getHeight();
             float x = (float)r.getX();
             float y = (float)r.getY();
             
             float cx = x + w * 0.5f;
-            float cy = y + h * 0.5f;
+            float cy = y + th * 0.5f;
             float s = w * 0.3f;
             
             if (left)
@@ -236,7 +264,11 @@ public:
                 p.addTriangle(cx - s, cy - s, cx - s, cy + s, cx + s, cy);
             }
             
-            g.drawRect(r);
+            g.setColour(laneColor);
+            g.fillRect(r);
+            g.setColour(juce::Colours::black);
+            g.fillRect(r.reduced(1));
+            g.setColour(laneColor);
             g.fillPath(p);
         };
         
@@ -247,7 +279,10 @@ public:
 
         // Draw Random Button
         g.setColour(laneColor);
-        g.drawRect(randomRect);
+        g.fillRect(randomRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(randomRect.reduced(1));
+        g.setColour(laneColor);
         
         bool showSquares = isHoveringRandom && juce::ModifierKeys::getCurrentModifiers().isShiftDown();
         
@@ -272,7 +307,12 @@ public:
                 if (i % 2 == 0)
                     g.fillRect(x, y, size, size);
                 else
-                    g.drawRect(x, y, size, size);
+                {
+                    g.fillRect(x, y, size, size);
+                    g.setColour(juce::Colours::black);
+                    g.fillRect(juce::Rectangle<int>(x, y, size, size).reduced(1));
+                    g.setColour(laneColor);
+                }
             }
         }
         else
@@ -295,7 +335,10 @@ public:
         
         // Draw Random Range Slider
         g.setColour(laneColor);
-        g.drawRect(randomRangeRect);
+        g.fillRect(randomRangeRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(randomRangeRect.reduced(1));
+        g.setColour(laneColor);
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         juce::String rangeText = (laneData.randomRange == 0) ? "FULL" : ("+/-" + juce::String(laneData.randomRange));
         g.drawText(rangeText, randomRangeRect, juce::Justification::centred);
@@ -307,23 +350,24 @@ public:
         // Save area for overlay
         auto stepsArea = area;
         
-        for (int i = 0; i < 16; ++i)
+        for (size_t i = 0; i < 16; ++i)
         {
-            auto stepArea = area.removeFromLeft(stepWidth); // No gap
+            auto stepArea = area.removeFromLeft((int)stepWidth); // No gap
             
             // Draw Advance Trigger Button (Increased height to 24px)
-            auto btnArea = stepArea.removeFromBottom(triggerHeight);
+            auto btnArea = stepArea.removeFromBottom(triggerHeight).reduced(2);
             
             // Draw Value Bar (Remaining top part)
             auto fullBarArea = stepArea;
+            fullBarArea.removeFromBottom(1);
             
             // Use full height
-            int reducedBarHeight = fullBarArea.getHeight();
+            // int reducedBarHeight = fullBarArea.getHeight();
             auto effectiveBarArea = fullBarArea;
             
             // Dim if outside loop
-            float valAlpha = (i < laneData.valueLoopLength) ? 1.0f : 0.3f;
-            float trigAlpha = (i < laneData.triggerLoopLength) ? 1.0f : 0.3f;
+            float valAlpha = (i < (size_t)laneData.valueLoopLength) ? 1.0f : 0.3f;
+            float trigAlpha = (i < (size_t)laneData.triggerLoopLength) ? 1.0f : 0.3f;
             
             // Background for bar area
             g.setColour(laneColor.withAlpha(0.33f * valAlpha));
@@ -340,24 +384,24 @@ public:
             g.fillRect(fillArea);
             
             // Highlight current step
-            if (i == laneData.activeValueStep)
+            if (i == (size_t)laneData.activeValueStep)
             {
                 g.setColour(laneColor.brighter(0.5f).withAlpha(0.5f));
                 g.fillRect(effectiveBarArea);
             }
 
             // Draw Advance Trigger Button
-            g.setColour(laneColor.withAlpha(0.33f * trigAlpha));
-            g.drawRect(btnArea);
+            g.setColour(laneColor.withAlpha(trigAlpha));
+            g.fillRect(btnArea);
             
-            if (laneData.triggers[i])
+            if (!laneData.triggers[i])
             {
-                g.setColour(laneColor.withAlpha(trigAlpha));
-                g.fillRect(btnArea.reduced(2));
+                g.setColour(juce::Colours::black);
+                g.fillRect(btnArea.reduced(1));
             }
             
             // Highlight current trigger step
-            if (i == laneData.activeTriggerStep)
+            if (i == (size_t)laneData.activeTriggerStep)
             {
                 g.setColour(laneColor.brighter(0.5f).withAlpha(0.5f));
                 g.fillRect(btnArea);
@@ -386,16 +430,14 @@ public:
     void mouseDown(const juce::MouseEvent& e) override
     {
         auto area = getLocalBounds();
-        auto leftArea = area.removeFromLeft(60);
-        auto rightArea = area.removeFromRight(120);
+        area.removeFromLeft(60);
+        area.removeFromRight(130);
         
         // Handle Left Toggles
         if (e.x < 60)
         {
             int triggerHeight = 24;
             int h = getHeight();
-            int barAreaHeight = h - triggerHeight;
-            int reducedBarHeight = barAreaHeight;
             int barTopY = 0;
             
             if (e.y >= h - triggerHeight)
@@ -413,7 +455,17 @@ public:
                 // Reset Button Clicked (Between M and L)
                 if (e.y >= triggerHeight && e.y < h - triggerHeight)
                 {
-                    if (onResetClicked) onResetClicked(e.mods.isAltDown());
+                    // Check if clicking the label area
+                    int btnH = 60;
+                    int btnY = (h - btnH) / 2;
+                    if (e.y >= btnY && e.y < btnY + btnH)
+                    {
+                        if (onLabelClicked) onLabelClicked(e.mods.isShiftDown());
+                    }
+                    else
+                    {
+                        if (onResetClicked) onResetClicked(e.mods.isAltDown());
+                    }
                     repaint();
                 }
             }
@@ -423,9 +475,9 @@ public:
         // Handle Right Controls
         if (e.x > getWidth() - 120)
         {
-            int triggerHeight = 24;
-            int h = getHeight();
-            int barTopY = 0;
+            // int triggerHeight = 24;
+            // int h = getHeight();
+            // int barTopY = 0;
             
             int rightMarginX = getWidth() - 120;
             int col1_X = rightMarginX;
@@ -582,15 +634,15 @@ public:
                 if (e.mods.isAltDown())
                 {
                     // Relative: Shift all steps by the difference
-                    int diff = val - laneData.values[stepIdx];
-                    for(int i=0; i<16; ++i)
+                    int diff = val - laneData.values[(size_t)stepIdx];
+                    for(size_t i=0; i<16; ++i)
                     {
                         laneData.values[i] = juce::jlimit(minVal, maxVal, laneData.values[i] + diff);
                     }
                 }
                 else
                 {
-                    laneData.values[stepIdx] = val;
+                    laneData.values[(size_t)stepIdx] = val;
                 }
                 
                 lastDragValue = val;
@@ -605,8 +657,8 @@ public:
             else
             {
                 isDraggingTrigger = true;
-                targetTriggerState = !laneData.triggers[stepIdx];
-                laneData.triggers[stepIdx] = targetTriggerState;
+                targetTriggerState = !laneData.triggers[(size_t)stepIdx];
+                laneData.triggers[(size_t)stepIdx] = targetTriggerState;
             }
             repaint();
         }
@@ -622,7 +674,7 @@ public:
                 int closestIdx = 0;
                 int minDiff = 1000;
                 for(int i=0; i<(int)steps.size(); ++i) {
-                    int diff = std::abs(steps[i] - current);
+                    int diff = std::abs(steps[(size_t)i] - current);
                     if(diff < minDiff) {
                         minDiff = diff;
                         closestIdx = i;
@@ -631,7 +683,7 @@ public:
                 
                 int nextIdx = closestIdx + (delta > 0 ? 1 : -1);
                 nextIdx = juce::jlimit(0, (int)steps.size()-1, nextIdx);
-                return steps[nextIdx];
+                return steps[(size_t)nextIdx];
             } else {
                 int next = current + (delta > 0 ? 1 : -1);
                 return juce::jlimit(0, 128, next);
@@ -760,7 +812,7 @@ public:
                 if (stepIdx >= 0 && stepIdx < 16 && stepIdx != lastEditedStep)
                 {
                     lastEditedStep = stepIdx;
-                    laneData.triggers[stepIdx] = targetTriggerState;
+                    laneData.triggers[(size_t)stepIdx] = targetTriggerState;
                     repaint();
                 }
             }
@@ -774,7 +826,7 @@ public:
                     int diff = val - lastDragValue;
                     if (diff != 0)
                     {
-                        for(int i=0; i<16; ++i)
+                        for(size_t i=0; i<16; ++i)
                         {
                             laneData.values[i] = juce::jlimit(minVal, maxVal, laneData.values[i] + diff);
                         }
@@ -787,7 +839,7 @@ public:
                     // Normal paint
                     if (stepIdx >= 0 && stepIdx < 16)
                     {
-                        laneData.values[stepIdx] = val;
+                        laneData.values[(size_t)stepIdx] = val;
                         lastDragValue = val;
                         lastEditedStep = stepIdx;
                         repaint();
@@ -808,7 +860,7 @@ public:
     {
         int triggerHeight = 24;
         int barAreaHeight = h - triggerHeight;
-        int reducedBarHeight = barAreaHeight;
+        int reducedBarHeight = barAreaHeight - 1;
         int barTop = 0;
         
         int relativeY = y - barTop;
@@ -823,7 +875,7 @@ public:
     void updateValue(int stepIdx, int y, int h)
     {
         int val = getValueFromY(y, h);
-        laneData.values[stepIdx] = val;
+        laneData.values[(size_t)stepIdx] = val;
         
         if (valueFormatter)
             lastEditedValue = valueFormatter(val);
@@ -836,7 +888,7 @@ public:
     void randomizeValues()
     {
         juce::Random r;
-        for (int i = 0; i < 16; ++i)
+        for (size_t i = 0; i < 16; ++i)
         {
             if (laneData.randomRange == 0)
             {
@@ -856,7 +908,7 @@ public:
     void randomizeTriggers()
     {
         juce::Random r;
-        for (int i = 0; i < 16; ++i)
+        for (size_t i = 0; i < 16; ++i)
         {
             laneData.triggers[i] = r.nextBool();
         }
@@ -876,8 +928,7 @@ public:
 
     void mouseMove(const juce::MouseEvent& e) override
     {
-        int rightMarginX = getWidth() - 120;
-        int col1_X = rightMarginX;
+        int col1_X = getWidth() - 120;
         int ctrlH = 24;
         int gap = 1;
         juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
@@ -891,13 +942,12 @@ public:
         }
     }
 
-    void mouseExit(const juce::MouseEvent& e) override
+    void mouseExit(const juce::MouseEvent&) override
     {
         if (isHoveringRandom)
         {
             isHoveringRandom = false;
-            int rightMarginX = getWidth() - 120;
-            int col1_X = rightMarginX;
+            int col1_X = getWidth() - 120;
             int ctrlH = 24;
             int gap = 1;
             juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
@@ -906,12 +956,11 @@ public:
         }
     }
     
-    void modifierKeysChanged(const juce::ModifierKeys& modifiers) override
+    void modifierKeysChanged(const juce::ModifierKeys&) override
     {
         if (isHoveringRandom)
         {
-            int rightMarginX = getWidth() - 120;
-            int col1_X = rightMarginX;
+            int col1_X = getWidth() - 120;
             int ctrlH = 24;
             int gap = 1;
             juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
@@ -981,7 +1030,10 @@ public:
         else
         {
             g.setColour(Theme::slotsColor);
-            g.drawRect(area);
+            g.fillRect(area);
+            g.setColour(juce::Colours::black);
+            g.fillRect(area.reduced(1));
+            g.setColour(Theme::slotsColor);
         }
         
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
@@ -1056,9 +1108,16 @@ public:
         saveRect = saveRect.reduced(1);
         
         g.setColour(Theme::slotsColor);
-        g.drawRect(loadRect);
-        g.drawRect(saveRect);
+        g.fillRect(loadRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(loadRect.reduced(1));
         
+        g.setColour(Theme::slotsColor);
+        g.fillRect(saveRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(saveRect.reduced(1));
+        
+        g.setColour(Theme::slotsColor);
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         g.drawText("L", loadRect, juce::Justification::centred);
         g.drawText("S", saveRect, juce::Justification::centred);
@@ -1126,8 +1185,8 @@ public:
         g.fillAll(juce::Colours::black);
 
         auto area = getLocalBounds();
-        auto leftArea = area.removeFromLeft(60); // Margin
-        auto rightArea = area.removeFromRight(130); // Match LaneComponent layout
+        area.removeFromLeft(60); // Margin
+        area.removeFromRight(130); // Match LaneComponent layout
         
         // Draw GATE Reset Button
         int btnH = 60;
@@ -1153,30 +1212,34 @@ public:
         
         // Top Row: Shift L | Length | Shift R
         int topRowH = 24;
+        int topRowY = 8; // Shifted down by 8px
         
-        juce::Rectangle<int> shiftL(col1_X, 0, 20, topRowH);
+        juce::Rectangle<int> shiftL(col1_X, topRowY, 20, topRowH);
         shiftL = shiftL.reduced(1);
 
-        juce::Rectangle<int> lenRect(col1_X + 20, 0, 40, topRowH);
+        juce::Rectangle<int> lenRect(col1_X + 20, topRowY, 40, topRowH);
         lenRect = lenRect.reduced(1);
 
-        juce::Rectangle<int> shiftR(col1_X + 60, 0, 20, topRowH);
+        juce::Rectangle<int> shiftR(col1_X + 60, topRowY, 20, topRowH);
         shiftR = shiftR.reduced(1);
 
         g.setColour(Theme::masterColor);
-        g.drawRect(lenRect);
+        g.fillRect(lenRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(lenRect.reduced(1));
+        g.setColour(Theme::masterColor);
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         g.drawText(juce::String(processor.masterLength), lenRect, juce::Justification::centred);
         
         auto drawTriangle = [&](juce::Rectangle<int> r, bool left) {
             juce::Path p;
             float w = (float)r.getWidth();
-            float h = (float)r.getHeight();
+            float th = (float)r.getHeight();
             float x = (float)r.getX();
             float y = (float)r.getY();
             
             float cx = x + w * 0.5f;
-            float cy = y + h * 0.5f;
+            float cy = y + th * 0.5f;
             float s = w * 0.3f;
             
             if (left)
@@ -1188,7 +1251,11 @@ public:
                 p.addTriangle(cx - s, cy - s, cx - s, cy + s, cx + s, cy);
             }
             
-            g.drawRect(r);
+            g.setColour(Theme::masterColor);
+            g.fillRect(r);
+            g.setColour(juce::Colours::black);
+            g.fillRect(r.reduced(1));
+            g.setColour(Theme::masterColor);
             g.fillPath(p);
         };
         
@@ -1199,7 +1266,7 @@ public:
         // Probability Slider (Below Top Row)
         // Full width of the 3 buttons (20+40+20 = 80)
         // Height 14px
-        int sliderY = topRowH + 2;
+        int sliderY = topRowY + topRowH + 2; // 8 + 24 + 2 = 34
         int sliderH = 12; // Reduced slightly to ensure it fits
         juce::Rectangle<int> probRect(col1_X, sliderY, 80, sliderH);
         probRect = probRect.reduced(1);
@@ -1208,7 +1275,10 @@ public:
         g.fillRect(probRect); // Background track
         
         g.setColour(Theme::masterColor);
-        g.drawRect(probRect); // Outline
+        g.fillRect(probRect);
+        g.setColour(juce::Colours::black);
+        g.fillRect(probRect.reduced(1));
+        g.setColour(Theme::masterColor);
         
         if (processor.masterProbability > 0)
         {
@@ -1219,46 +1289,41 @@ public:
         // Steps
         float stepWidth = area.getWidth() / 16.0f;
         
-        for (int i = 0; i < 16; ++i)
+        for (size_t i = 0; i < 16; ++i)
         {
-            auto stepArea = area.removeFromLeft(stepWidth).reduced(2);
+            auto stepArea = area.removeFromLeft((int)stepWidth);
+            
+            // Make Square and Center Vertically
+            int size = stepArea.getWidth();
+            int yOffset = (stepArea.getHeight() - size) / 2;
+            auto squareArea = stepArea.withY(stepArea.getY() + yOffset).withHeight(size).reduced(2);
             
             // Dim if outside loop
-            float alpha = (i < processor.masterLength) ? 1.0f : 0.3f;
+            float alpha = (i < (size_t)processor.masterLength) ? 1.0f : 0.3f;
             
-            g.setColour(Theme::masterColor.withAlpha(0.33f * alpha));
-            g.drawRect(stepArea);
-            // 
-            if (processor.masterTriggers[i])
+            g.setColour(Theme::masterColor.withAlpha(alpha));
+            g.fillRect(squareArea);
+            
+            if (!processor.masterTriggers[i])
             {
-                g.setColour(Theme::masterColor.withAlpha(alpha));
-                g.fillRect(stepArea.reduced(2));
-                
+                g.setColour(juce::Colours::black);
+                g.fillRect(squareArea.reduced(1));
+            }
+            else
+            {
                 // Draw PROB indicator (Black Square - Hole)
                 if (processor.masterProbEnabled[i])
                 {
                     g.setColour(juce::Colours::black);
-                    g.fillRect(stepArea.withSizeKeepingCentre(12, 12));
+                    g.fillRect(squareArea.withSizeKeepingCentre(10, 10));
                 }
-            }
-            else
-            {
-                // Draw PROB indicator (Colored Square - Visible on Black)
-                // Removed as per user request ("no need for the small yellow square")
-                /*
-                if (processor.masterProbEnabled[i])
-                {
-                    g.setColour(Theme::masterColor.withAlpha(alpha));
-                    g.fillRect(stepArea.withSizeKeepingCentre(8, 8));
-                }
-                */
             }
             
             // Highlight current master step
-            if (i == processor.currentMasterStep)
+            if (i == (size_t)processor.currentMasterStep)
             {
                 g.setColour(Theme::masterColor.brighter(0.5f).withAlpha(0.5f));
-                g.fillRect(stepArea);
+                g.fillRect(squareArea);
             }
         }
     }
@@ -1266,7 +1331,7 @@ public:
     void mouseDown(const juce::MouseEvent& e) override
     {
         auto area = getLocalBounds();
-        auto leftArea = area.removeFromLeft(60);
+        area.removeFromLeft(60);
         
         // Handle GATE Reset Button (Left Area)
         if (e.x < 60)
@@ -1288,9 +1353,10 @@ public:
         int col1_X = rightMarginX;
         
         int topRowH = 24;
+        int topRowY = 8;
         
         // Handle Length (Col A)
-        if (e.x >= col1_X + 20 && e.x < col1_X + 60 && e.y < topRowH)
+        if (e.x >= col1_X + 20 && e.x < col1_X + 60 && e.y >= topRowY && e.y < topRowY + topRowH)
         {
             isDraggingLength = true;
             lastMouseX = e.x;
@@ -1299,7 +1365,7 @@ public:
         }
         
         // Handle Shift L
-        if (e.x >= col1_X && e.x < col1_X + 20 && e.y < topRowH)
+        if (e.x >= col1_X && e.x < col1_X + 20 && e.y >= topRowY && e.y < topRowY + topRowH)
         {
             processor.shiftMasterTriggers(-1);
             repaint();
@@ -1307,7 +1373,7 @@ public:
         }
         
         // Handle Shift R
-        if (e.x >= col1_X + 60 && e.x < col1_X + 80 && e.y < topRowH)
+        if (e.x >= col1_X + 60 && e.x < col1_X + 80 && e.y >= topRowY && e.y < topRowY + topRowH)
         {
             processor.shiftMasterTriggers(1);
             repaint();
@@ -1315,8 +1381,8 @@ public:
         }
         
         // Handle Probability Slider
-        int sliderY = topRowH + 2;
-        int sliderH = 14;
+        int sliderY = topRowY + topRowH + 2; // 34
+        int sliderH = 14; // Hit area slightly larger than visual 12
         if (e.x >= col1_X && e.x < col1_X + 80 && e.y >= sliderY && e.y < sliderY + sliderH)
         {
             isDraggingProbability = true;
@@ -1334,13 +1400,13 @@ public:
             if (e.mods.isShiftDown())
             {
                 // Toggle Probability Step
-                targetProbState = !processor.masterProbEnabled[stepIdx];
-                processor.masterProbEnabled[stepIdx] = targetProbState;
+                targetProbState = !processor.masterProbEnabled[(size_t)stepIdx];
+                processor.masterProbEnabled[(size_t)stepIdx] = targetProbState;
                 
                 // If enabling probability on an empty step, turn the step ON
-                if (targetProbState && !processor.masterTriggers[stepIdx])
+                if (targetProbState && !processor.masterTriggers[(size_t)stepIdx])
                 {
-                    processor.masterTriggers[stepIdx] = true;
+                    processor.masterTriggers[(size_t)stepIdx] = true;
                 }
                 
                 lastEditedStep = stepIdx;
@@ -1349,12 +1415,12 @@ public:
             }
 
             lastEditedStep = stepIdx;
-            targetTriggerState = !processor.masterTriggers[stepIdx];
-            processor.masterTriggers[stepIdx] = targetTriggerState;
+            targetTriggerState = !processor.masterTriggers[(size_t)stepIdx];
+            processor.masterTriggers[(size_t)stepIdx] = targetTriggerState;
             
             // If turning OFF gate, also disable probability to avoid "small yellow square" state
             if (!targetTriggerState)
-                processor.masterProbEnabled[stepIdx] = false;
+                processor.masterProbEnabled[(size_t)stepIdx] = false;
                 
             repaint();
         }
@@ -1402,16 +1468,16 @@ public:
                 if (e.mods.isShiftDown())
                 {
                     // Dragging Probability
-                    processor.masterProbEnabled[stepIdx] = targetProbState;
-                    if (targetProbState && !processor.masterTriggers[stepIdx])
-                        processor.masterTriggers[stepIdx] = true;
+                    processor.masterProbEnabled[(size_t)stepIdx] = targetProbState;
+                    if (targetProbState && !processor.masterTriggers[(size_t)stepIdx])
+                        processor.masterTriggers[(size_t)stepIdx] = true;
                 }
                 else
                 {
                     // Dragging Gate
-                    processor.masterTriggers[stepIdx] = targetTriggerState;
+                    processor.masterTriggers[(size_t)stepIdx] = targetTriggerState;
                     if (!targetTriggerState)
-                        processor.masterProbEnabled[stepIdx] = false;
+                        processor.masterProbEnabled[(size_t)stepIdx] = false;
                 }
                 repaint();
             }
@@ -1469,7 +1535,13 @@ public:
             
             g.setColour(Theme::slotsColor.withAlpha(isSelected ? 1.0f : 0.2f));
             if (isSelected) g.fillRect(btnRect);
-            else g.drawRect(btnRect);
+            else
+            {
+                g.setColour(Theme::slotsColor.withAlpha(0.2f));
+                g.fillRect(btnRect);
+                g.setColour(juce::Colours::black);
+                g.fillRect(btnRect.reduced(1));
+            }
             
             g.setColour(isSelected ? juce::Colours::black : Theme::slotsColor);
             g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
@@ -1509,20 +1581,25 @@ public:
         auto area = getLocalBounds();
         float stepWidth = area.getWidth() / 16.0f;
         
-        for (int i = 0; i < 16; ++i)
+        for (size_t i = 0; i < 16; ++i)
         {
-            auto slotRect = area.removeFromLeft(stepWidth).reduced(2);
+            auto slotRect = area.removeFromLeft((int)stepWidth).reduced(2);
             
-            bool hasPattern = !processor.patternBanks[processor.currentBank][i].isEmpty;
+            bool hasPattern = !processor.patternBanks[(size_t)processor.currentBank][i].isEmpty;
             
-            g.setColour(Theme::slotsColor.withAlpha(hasPattern ? 0.8f : 0.2f));
-            if (hasPattern) g.fillRect(slotRect);
-            else g.drawRect(slotRect);
+            g.setColour(Theme::slotsColor);
+            g.fillRect(slotRect);
+            
+            if (!hasPattern)
+            {
+                g.setColour(juce::Colours::black);
+                g.fillRect(slotRect.reduced(1));
+            }
             
             // Draw Loaded Indicator
-            if (processor.currentBank == processor.loadedBank && i == processor.loadedSlot)
+            if (processor.currentBank == processor.loadedBank && i == (size_t)processor.loadedSlot)
             {
-                int globalSlotNum = (processor.currentBank * 16) + i + 1;
+                int globalSlotNum = (processor.currentBank * 16) + (int)i + 1;
                 
                 g.setColour(juce::Colours::black);
                 g.setFont(juce::FontOptions("Arial", (float)slotRect.getHeight() * 0.8f, juce::Font::bold));
@@ -1567,6 +1644,31 @@ private:
     ShequencerAudioProcessor& processor;
 };
 
+class PageSelectorComponent : public juce::Component
+{
+public:
+    std::function<void()> onPageChanged;
+    int currentPage = 0;
+    
+    void paint(juce::Graphics& g) override
+    {
+        auto area = getLocalBounds().reduced(2);
+        g.setColour(Theme::slotsColor);
+        g.fillRect(area);
+        
+        g.setColour(juce::Colours::black);
+        g.setFont(juce::FontOptions("Arial", 20.0f, juce::Font::bold));
+        g.drawText(currentPage == 0 ? "I" : "II", area, juce::Justification::centred);
+    }
+    
+    void mouseDown(const juce::MouseEvent&) override
+    {
+        currentPage = !currentPage;
+        if (onPageChanged) onPageChanged();
+        repaint();
+    }
+};
+
 class ShequencerAudioProcessorEditor  : public juce::AudioProcessorEditor
 {
 public:
@@ -1575,11 +1677,13 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    
+    void updatePageVisibility();
+    int currentPage = 0;
 
 private:
-    ShequencerAudioProcessor& audioProcessor;
-    
     juce::VBlankAttachment vBlankAttachment;
+    juce::Component mainContainer;
     
     MasterTriggerComponent masterTriggerComp;
     std::unique_ptr<LaneComponent> noteLaneComp;
@@ -1587,11 +1691,17 @@ private:
     std::unique_ptr<LaneComponent> velocityLaneComp;
     std::unique_ptr<LaneComponent> lengthLaneComp;
     
+    std::unique_ptr<LaneComponent> ccLane1Comp;
+    std::unique_ptr<LaneComponent> ccLane2Comp;
+    std::unique_ptr<LaneComponent> ccLane3Comp;
+    std::unique_ptr<LaneComponent> ccLane4Comp;
+    
     BankSelectorComponent bankSelectorComp;
     PatternSlotsComponent patternSlotsComp;
     ShuffleComponent shuffleComp;
     FileOpsComponent fileOpsComp;
     BuildNumberComponent buildNumberComp;
+    PageSelectorComponent pageSelectorComp;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ShequencerAudioProcessorEditor)
 };

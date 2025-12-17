@@ -40,6 +40,9 @@ struct SequencerLane
     
     bool valueMovingForward = true;
     bool triggerMovingForward = true;
+    
+    // MIDI CC (0 = Off, 1-127 = CC Number)
+    int midiCC = 0;
 
     // Helper to advance value
     void advanceValue(juce::Random& r)
@@ -162,7 +165,7 @@ struct SequencerLane
     }
 
     void reset() { 
-        currentValueStep = 0; 
+        currentValueStep = valueLoopLength - 1; 
         activeValueStep = 0; 
         currentTriggerStep = 0;
         activeTriggerStep = 0;
@@ -222,12 +225,18 @@ struct PatternData
         bool enableLocalSource = true;
         int valueDirection = 0; // Stored as int
         int triggerDirection = 0;
+        int midiCC = 0;
     };
     
     LaneData noteLane;
     LaneData octaveLane;
     LaneData velocityLane;
     LaneData lengthLane;
+    
+    LaneData ccLane1;
+    LaneData ccLane2;
+    LaneData ccLane3;
+    LaneData ccLane4;
 };
 
 class ShequencerAudioProcessor  : public juce::AudioProcessor
@@ -280,6 +289,11 @@ public:
     SequencerLane velocityLane;
     SequencerLane lengthLane;
     
+    SequencerLane ccLane1;
+    SequencerLane ccLane2;
+    SequencerLane ccLane3;
+    SequencerLane ccLane4;
+    
     // Pattern Management
     std::array<std::array<PatternData, 16>, 4> patternBanks; // 4 Banks of 16 Patterns
     int currentBank = 0;
@@ -302,6 +316,7 @@ public:
     
     void setGlobalStepIndex(int targetIndex);
     void setLaneTriggerIndex(SequencerLane& lane, int targetIndex);
+    void setLaneValueIndex(SequencerLane& lane, int targetIndex);
     
     void resetLane(SequencerLane& lane, int defaultValue);
     void resetAllLanes();
