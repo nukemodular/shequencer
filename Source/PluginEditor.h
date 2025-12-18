@@ -19,6 +19,31 @@ namespace Theme
     static juce::Font getValueFont() { return juce::FontOptions("Arial", 50.0f, juce::Font::bold); }
 }
 
+class ColorPickerClient : public juce::Component, public juce::ChangeListener
+{
+public:
+    ColorPickerClient(juce::Colour& target, juce::Colour initialColor, std::function<void()> callback)
+        : targetColor(target), onUpdate(callback)
+    {
+        selector.setCurrentColour(initialColor);
+        selector.addChangeListener(this);
+        addAndMakeVisible(selector);
+        setSize(300, 400);
+    }
+    
+    void resized() override { selector.setBounds(getLocalBounds()); }
+    
+    void changeListenerCallback(juce::ChangeBroadcaster* /*source*/) override
+    {
+        targetColor = selector.getCurrentColour();
+        if (onUpdate) onUpdate();
+    }
+    
+    juce::ColourSelector selector;
+    juce::Colour& targetColor;
+    std::function<void()> onUpdate;
+};
+
 class LaneComponent : public juce::Component
 {
 public:
@@ -34,6 +59,10 @@ public:
     std::function<void(bool)> onLabelClicked; // bool isShift
     
     void setLaneName(juce::String newName) { laneName = newName; repaint(); }
+    
+    juce::Colour getEffectiveColor() const {
+        return laneData.customColor.isTransparent() ? laneColor : laneData.customColor;
+    }
     
     void tick()
     {
@@ -77,7 +106,7 @@ public:
         
         juce::Rectangle<int> resetBtnRect(btnX, btnY, btnW, btnH);
         
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(resetBtnRect);
         
         g.setColour(juce::Colours::black);
@@ -103,12 +132,12 @@ public:
         g.fillRect(masterToggle.reduced(1));
         
         // Local Toggle (Lane Color)
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(localToggle);
         g.setColour(juce::Colours::black);
         g.fillRect(localToggle.reduced(1));
         
-        g.setColour(laneColor.withAlpha(laneData.enableLocalSource ? 1.0f : 0.33f));
+        g.setColour(getEffectiveColor().withAlpha(laneData.enableLocalSource ? 1.0f : 0.33f));
         g.fillRect(localToggle.reduced(1));
 
         // Right Controls (Loop Lengths)
@@ -200,49 +229,49 @@ public:
         g.drawEllipse(resetX - resetRadius, resetY - resetRadius, resetRadius * 2, resetRadius * 2, 1.0f);
         */
 
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         
         // Draw Value Loop Control (Outline only)
         g.fillRect(valLoopRect);
         g.setColour(juce::Colours::black);
         g.fillRect(valLoopRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.drawText(juce::String(laneData.valueLoopLength), valLoopRect, juce::Justification::centred);
         
         // Draw Value Reset Control
         g.fillRect(valResetRect);
         g.setColour(juce::Colours::black);
         g.fillRect(valResetRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.drawText(laneData.valueResetInterval == 0 ? "FREE" : juce::String(laneData.valueResetInterval), valResetRect, juce::Justification::centred);
 
         // Draw Value Direction Control
         g.fillRect(valDirRect);
         g.setColour(juce::Colours::black);
         g.fillRect(valDirRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.drawText(getDirectionString(laneData.valueDirection), valDirRect, juce::Justification::centred);
         
         // Draw Trigger Reset Control
         g.fillRect(trigResetRect);
         g.setColour(juce::Colours::black);
         g.fillRect(trigResetRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.drawText(laneData.triggerResetInterval == 0 ? "FREE" : juce::String(laneData.triggerResetInterval), trigResetRect, juce::Justification::centred);
 
         // Draw Trigger Direction Control
         g.fillRect(trigDirRect);
         g.setColour(juce::Colours::black);
         g.fillRect(trigDirRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.drawText(getDirectionString(laneData.triggerDirection), trigDirRect, juce::Justification::centred);
         
         // Draw Trigger Loop Control (Outline only)
         g.fillRect(trigLoopRect);
         g.setColour(juce::Colours::black);
         g.fillRect(trigLoopRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.drawText(juce::String(laneData.triggerLoopLength), trigLoopRect, juce::Justification::centred);
         
         // Draw Shift Triangles
@@ -269,7 +298,7 @@ public:
             g.setColour(juce::Colours::black);
             g.fillRect(r);
             
-            g.setColour(laneColor);
+            g.setColour(getEffectiveColor());
             g.drawRect(r, 1);
             g.fillPath(p);
         };
@@ -279,12 +308,23 @@ public:
         drawTriangle(trigShiftL, true);
         drawTriangle(trigShiftR, false);
 
+        // Color Picker Button (Row 2, Col 3)
+        int col3_X = rightMarginX + 80;
+        int colorBtnSize = 16;
+        int colorBtnX = col3_X + (40 - colorBtnSize) / 2;
+        int colorBtnY = (ctrlH + gap) * 2 + 3 + (ctrlH - colorBtnSize) / 2;
+        
+        juce::Rectangle<int> colorBtnRect(colorBtnX, colorBtnY, colorBtnSize, colorBtnSize);
+        
+        g.setColour(getEffectiveColor());
+        g.fillEllipse(colorBtnRect.toFloat());
+
         // Draw Random Button
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(randomRect);
         g.setColour(juce::Colours::black);
         g.fillRect(randomRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         
         bool showSquares = isHoveringRandom && juce::ModifierKeys::getCurrentModifiers().isShiftDown();
         
@@ -313,7 +353,7 @@ public:
                     g.fillRect(x, y, size, size);
                     g.setColour(juce::Colours::black);
                     g.fillRect(juce::Rectangle<int>(x, y, size, size).reduced(1));
-                    g.setColour(laneColor);
+                    g.setColour(getEffectiveColor());
                 }
             }
         }
@@ -336,11 +376,11 @@ public:
         }
         
         // Draw Random Range Slider
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(randomRangeRect);
         g.setColour(juce::Colours::black);
         g.fillRect(randomRangeRect.reduced(1));
-        g.setColour(laneColor);
+        g.setColour(getEffectiveColor());
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         juce::String rangeText = (laneData.randomRange == 0) ? "FULL" : ("+/-" + juce::String(laneData.randomRange));
         g.drawText(rangeText, randomRangeRect, juce::Justification::centred);
@@ -372,7 +412,7 @@ public:
             float trigAlpha = (i < (size_t)laneData.triggerLoopLength) ? 1.0f : 0.3f;
             
             // Background for bar area
-            g.setColour(laneColor.withAlpha(0.33f * valAlpha));
+            g.setColour(getEffectiveColor().withAlpha(0.33f * valAlpha));
             g.fillRect(effectiveBarArea);
             
             float normVal = (float)(laneData.values[i] - minVal) / (float)(maxVal - minVal);
@@ -382,18 +422,18 @@ public:
             auto valueBarArea = effectiveBarArea;
             auto fillArea = valueBarArea.removeFromBottom(barHeight);
             
-            g.setColour(laneColor.withAlpha(valAlpha));
+            g.setColour(getEffectiveColor().withAlpha(valAlpha));
             g.fillRect(fillArea);
             
             // Highlight current step
             if (i == (size_t)laneData.activeValueStep)
             {
-                g.setColour(laneColor.darker(1.0f).withAlpha(0.5f));
+                g.setColour(getEffectiveColor().darker(1.0f).withAlpha(0.5f));
                 g.fillRect(effectiveBarArea);
             }
 
             // Draw Advance Trigger Button
-            g.setColour(laneColor.withAlpha(trigAlpha));
+            g.setColour(getEffectiveColor().withAlpha(trigAlpha));
             g.fillRect(btnArea);
             
             if (!laneData.triggers[i])
@@ -405,7 +445,7 @@ public:
             // Highlight current trigger step
             if (i == (size_t)laneData.activeTriggerStep)
             {
-                g.setColour(laneColor.darker(1.0f).withAlpha(0.5f));
+                g.setColour(getEffectiveColor().darker(1.0f).withAlpha(0.5f));
                 g.fillRect(btnArea);
             }
         }
@@ -424,7 +464,7 @@ public:
             g.drawText(lastEditedValue, overlayRect.translated(2, 2), juce::Justification::centred, false);
             
             // Main Text (Lane Color)
-            g.setColour(laneColor.withAlpha(valueDisplayAlpha));
+            g.setColour(getEffectiveColor().withAlpha(valueDisplayAlpha));
             g.drawText(lastEditedValue, overlayRect, juce::Justification::centred, false);
         }
     }
@@ -565,6 +605,15 @@ public:
                 isDraggingRandomRange = true;
                 lastMouseY = e.y;
                 lastMouseX = e.x;
+                return;
+            }
+
+            // Color Picker (Row 2, Col 3)
+            int col3_X = rightMarginX + 80;
+            if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= (ctrlH + gap) * 2 + 3 && e.y < (ctrlH + gap) * 2 + ctrlH + 3)
+            {
+                auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
+                juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
                 return;
             }
 
@@ -1182,6 +1231,10 @@ class MasterTriggerComponent : public juce::Component
 public:
     MasterTriggerComponent(ShequencerAudioProcessor& p) : processor(p) { setOpaque(true); }
     
+    juce::Colour getEffectiveColor() const {
+        return processor.masterColor.isTransparent() ? Theme::masterColor : processor.masterColor;
+    }
+    
     void paint(juce::Graphics& g) override
     {
         g.fillAll(juce::Colours::black);
@@ -1201,7 +1254,7 @@ public:
         
         juce::Rectangle<int> resetBtnRect(btnX, btnY, btnW, btnH);
         
-        g.setColour(Theme::masterColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(resetBtnRect);
         
         g.setColour(juce::Colours::black);
@@ -1225,11 +1278,11 @@ public:
         juce::Rectangle<int> shiftR(col1_X + 60, topRowY, 20, topRowH);
         shiftR = shiftR.reduced(1);
 
-        g.setColour(Theme::masterColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(lenRect);
         g.setColour(juce::Colours::black);
         g.fillRect(lenRect.reduced(1));
-        g.setColour(Theme::masterColor);
+        g.setColour(getEffectiveColor());
         g.setFont(juce::FontOptions("Arial", 12.0f, juce::Font::bold));
         g.drawText(juce::String(processor.masterLength), lenRect, juce::Justification::centred);
         
@@ -1256,14 +1309,25 @@ public:
             g.setColour(juce::Colours::black);
             g.fillRect(r);
             
-            g.setColour(Theme::masterColor);
+            g.setColour(getEffectiveColor());
             g.drawRect(r, 1);
             g.fillPath(p);
         };
         
-        g.setColour(Theme::masterColor);
+        g.setColour(getEffectiveColor());
         drawTriangle(shiftL, true);
         drawTriangle(shiftR, false);
+        
+        // Color Picker Button (Col 3)
+        int col3_X = rightMarginX + 80;
+        int colorBtnSize = 16;
+        int colorBtnX = col3_X + (40 - colorBtnSize) / 2;
+        int colorBtnY = (getHeight() - colorBtnSize) / 2;
+        
+        juce::Rectangle<int> colorBtnRect(colorBtnX, colorBtnY, colorBtnSize, colorBtnSize);
+        
+        g.setColour(getEffectiveColor());
+        g.fillEllipse(colorBtnRect.toFloat());
         
         // Probability Slider (Below Top Row)
         // Full width of the 3 buttons (20+40+20 = 80)
@@ -1273,14 +1337,14 @@ public:
         juce::Rectangle<int> probRect(col1_X, sliderY, 80, sliderH);
         probRect = probRect.reduced(1);
         
-        g.setColour(Theme::masterColor.withAlpha(0.2f));
+        g.setColour(getEffectiveColor().withAlpha(0.2f));
         g.fillRect(probRect); // Background track
         
-        g.setColour(Theme::masterColor);
+        g.setColour(getEffectiveColor());
         g.fillRect(probRect);
         g.setColour(juce::Colours::black);
         g.fillRect(probRect.reduced(1));
-        g.setColour(Theme::masterColor);
+        g.setColour(getEffectiveColor());
         
         if (processor.masterProbability > 0)
         {
@@ -1303,7 +1367,7 @@ public:
             // Dim if outside loop
             float alpha = (i < (size_t)processor.masterLength) ? 1.0f : 0.3f;
             
-            g.setColour(Theme::masterColor.withAlpha(alpha));
+            g.setColour(getEffectiveColor().withAlpha(alpha));
             g.fillRect(squareArea);
             
             if (!processor.masterTriggers[i])
@@ -1324,7 +1388,7 @@ public:
             // Highlight current master step
             if (i == (size_t)processor.currentMasterStep)
             {
-                g.setColour(Theme::masterColor.darker(1.0f).withAlpha(0.5f));
+                g.setColour(getEffectiveColor().darker(1.0f).withAlpha(0.5f));
                 g.fillRect(squareArea);
             }
         }
@@ -1379,6 +1443,16 @@ public:
         {
             processor.shiftMasterTriggers(1);
             repaint();
+            return;
+        }
+        
+        // Handle Color Picker (Col 3)
+        int col3_X = rightMarginX + 80;
+        // Hit area larger
+        if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= 0 && e.y < getHeight())
+        {
+            auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
+            juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
             return;
         }
         

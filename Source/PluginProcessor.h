@@ -44,6 +44,9 @@ struct SequencerLane
     // MIDI CC (0 = Off, 1-127 = CC Number)
     int midiCC = 0;
 
+    // Custom Color (If transparent, use default)
+    juce::Colour customColor = juce::Colours::transparentBlack;
+
     // Helper to advance value
     void advanceValue(juce::Random& r)
     {
@@ -211,6 +214,7 @@ struct PatternData
     int masterLength = 16;
     int shuffleAmount = 1;
     int masterProbability = 100; // 0-100%
+    juce::uint32 masterColor = 0; // 0 = Transparent/Default
     
     // Lanes
     struct LaneData {
@@ -226,6 +230,7 @@ struct PatternData
         int valueDirection = 0; // Stored as int
         int triggerDirection = 0;
         int midiCC = 0;
+        juce::uint32 customColor = 0; // 0 = Transparent/Default
     };
     
     LaneData noteLane;
@@ -279,6 +284,7 @@ public:
     int masterLength = 16;
     int shuffleAmount = 1; // 1 (Straight) to 7 (Max Swing)
     int masterProbability = 100; // 0-100%
+    juce::Colour masterColor = juce::Colours::transparentBlack;
     int activeShuffleAmount = 1; // Used for audio processing to ensure safe updates
     bool isShuffleGlobal = true;
     

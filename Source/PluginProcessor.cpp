@@ -690,6 +690,7 @@ void ShequencerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     xml.setAttribute("masterLength", masterLength);
     xml.setAttribute("shuffleAmount", shuffleAmount);
     xml.setAttribute("isShuffleGlobal", isShuffleGlobal);
+    xml.setAttribute("masterColor", (int)masterColor.getARGB());
     
     // Save Selection State
     xml.setAttribute("currentBank", currentBank);
@@ -713,6 +714,7 @@ void ShequencerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         laneXml->setAttribute("enableLocalSource", lane.enableLocalSource);
         laneXml->setAttribute("valueDirection", (int)lane.valueDirection);
         laneXml->setAttribute("triggerDirection", (int)lane.triggerDirection);
+        laneXml->setAttribute("customColor", (int)lane.customColor.getARGB());
         
         juce::String valStr;
         for (int v : lane.values) valStr += juce::String(v) + ",";
@@ -766,6 +768,7 @@ void ShequencerAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
                     lXml->setAttribute("enableLocalSource", ld.enableLocalSource);
                     lXml->setAttribute("valueDirection", ld.valueDirection);
                     lXml->setAttribute("triggerDirection", ld.triggerDirection);
+                    lXml->setAttribute("customColor", (int)ld.customColor);
                     
                     juce::String vStr;
                     for (int v : ld.values) vStr += juce::String(v) + ",";
@@ -801,6 +804,7 @@ void ShequencerAudioProcessor::setStateInformation (const void* data, int sizeIn
         masterLength = xmlState->getIntAttribute("masterLength", 16);
         shuffleAmount = xmlState->getIntAttribute("shuffleAmount", 1);
         isShuffleGlobal = xmlState->getBoolAttribute("isShuffleGlobal", true);
+        masterColor = juce::Colour((juce::uint32)xmlState->getIntAttribute("masterColor", 0));
 
         currentBank = xmlState->getIntAttribute("currentBank", 0);
         loadedBank = xmlState->getIntAttribute("loadedBank", -1);
@@ -824,6 +828,7 @@ void ShequencerAudioProcessor::setStateInformation (const void* data, int sizeIn
                 lane.enableLocalSource = laneXml->getBoolAttribute("enableLocalSource", true);
                 lane.valueDirection = (SequencerLane::Direction)laneXml->getIntAttribute("valueDirection", 0);
                 lane.triggerDirection = (SequencerLane::Direction)laneXml->getIntAttribute("triggerDirection", 0);
+                lane.customColor = juce::Colour((juce::uint32)laneXml->getIntAttribute("customColor", 0));
                 
                 juce::String valStr = laneXml->getStringAttribute("values");
                 juce::StringArray tokens;
@@ -883,6 +888,7 @@ void ShequencerAudioProcessor::setStateInformation (const void* data, int sizeIn
                                     ld.enableLocalSource = lXml->getBoolAttribute("enableLocalSource", true);
                                     ld.valueDirection = lXml->getIntAttribute("valueDirection", 0);
                                     ld.triggerDirection = lXml->getIntAttribute("triggerDirection", 0);
+                                    ld.customColor = (juce::uint32)lXml->getIntAttribute("customColor", 0);
                                     
                                     juce::String vStr = lXml->getStringAttribute("values");
                                     juce::StringArray toks; toks.addTokens(vStr, ",", "");
@@ -927,6 +933,7 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
     pat.masterProbability = masterProbability;
     pat.masterTriggers = masterTriggers;
     pat.masterProbEnabled = masterProbEnabled;
+    pat.masterColor = masterColor.getARGB();
     
     auto copyLane = [](const SequencerLane& src, PatternData::LaneData& dst) {
         dst.midiCC = src.midiCC;
@@ -941,6 +948,7 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
         dst.enableLocalSource = src.enableLocalSource;
         dst.valueDirection = (int)src.valueDirection;
         dst.triggerDirection = (int)src.triggerDirection;
+        dst.customColor = src.customColor.getARGB();
     };
     
     copyLane(noteLane, pat.noteLane);
@@ -984,6 +992,7 @@ void ShequencerAudioProcessor::applyPendingPatternLoad()
                 masterProbability = pat.masterProbability;
                 masterTriggers = pat.masterTriggers;
                 masterProbEnabled = pat.masterProbEnabled;
+                masterColor = juce::Colour(pat.masterColor);
                 
                 auto loadLane = [](SequencerLane& dst, const PatternData::LaneData& src) {
                     dst.midiCC = src.midiCC;
@@ -998,6 +1007,7 @@ void ShequencerAudioProcessor::applyPendingPatternLoad()
                     dst.enableLocalSource = src.enableLocalSource;
                     dst.valueDirection = (SequencerLane::Direction)src.valueDirection;
                     dst.triggerDirection = (SequencerLane::Direction)src.triggerDirection;
+                    dst.customColor = juce::Colour(src.customColor);
                 };
                 
                 loadLane(noteLane, pat.noteLane);
@@ -1066,6 +1076,7 @@ void ShequencerAudioProcessor::saveAllPatternsToJson(const juce::File& file)
                     patObj.getDynamicObject()->setProperty("masterLength", pat.masterLength);
                     patObj.getDynamicObject()->setProperty("shuffleAmount", pat.shuffleAmount);
                     patObj.getDynamicObject()->setProperty("masterProbability", pat.masterProbability);
+                    patObj.getDynamicObject()->setProperty("masterColor", (int)pat.masterColor);
                     
                     juce::String mTrig;
                     for (bool v : pat.masterTriggers) mTrig += (v ? "1" : "0");
@@ -1087,6 +1098,7 @@ void ShequencerAudioProcessor::saveAllPatternsToJson(const juce::File& file)
                         lObj.getDynamicObject()->setProperty("enableLocalSource", ld.enableLocalSource);
                         lObj.getDynamicObject()->setProperty("valueDirection", ld.valueDirection);
                         lObj.getDynamicObject()->setProperty("triggerDirection", ld.triggerDirection);
+                        lObj.getDynamicObject()->setProperty("customColor", (int)ld.customColor);
                         
                         juce::String vStr;
                         for (int v : ld.values) vStr += juce::String(v) + ",";
@@ -1158,6 +1170,7 @@ void ShequencerAudioProcessor::loadAllPatternsFromJson(const juce::File& file)
                             pat.masterLength = patObj.getProperty("masterLength", 16);
                             pat.shuffleAmount = patObj.getProperty("shuffleAmount", 1);
                             pat.masterProbability = patObj.getProperty("masterProbability", 100);
+                            pat.masterColor = (juce::uint32)(int)patObj.getProperty("masterColor", 0);
                             
                             juce::String mTrig = patObj.getProperty("masterTriggers", "").toString();
                             for(int k=0; k<16 && k<mTrig.length(); ++k) pat.masterTriggers[(size_t)k] = (mTrig[k] == '1');
@@ -1178,6 +1191,7 @@ void ShequencerAudioProcessor::loadAllPatternsFromJson(const juce::File& file)
                                     ld.enableLocalSource = lObj.getProperty("enableLocalSource", true);
                                     ld.valueDirection = lObj.getProperty("valueDirection", 0);
                                     ld.triggerDirection = lObj.getProperty("triggerDirection", 0);
+                                    ld.customColor = (juce::uint32)(int)lObj.getProperty("customColor", 0);
                                     
                                     juce::String vStr = lObj.getProperty("values", "").toString();
                                     juce::StringArray toks; toks.addTokens(vStr, ",", "");
