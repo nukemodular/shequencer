@@ -342,6 +342,7 @@ public:
     int sigDenominator = 4;
     
     bool isPlaying = false;
+    bool waitingForBarSync = false;
 
     // Note Off Management
     struct ActiveNote

@@ -25,6 +25,7 @@ public:
     LaneComponent(SequencerLane& lane, juce::String name, juce::Colour color, int minV, int maxV, int maxRR)
         : laneData(lane), laneName(name), laneColor(color), minVal(minV), maxVal(maxV), maxRandomRange(maxRR)
     {
+        setOpaque(true);
     }
     
     std::function<juce::String(int)> valueFormatter;
@@ -69,7 +70,7 @@ public:
         masterToggle = masterToggle.reduced(2);
         
         // Draw Reset Button (Between M and L)
-        int btnH = 60;
+        int btnH = 70;
         int btnW = 36;
         int btnX = 12;
         int btnY = (h - btnH) / 2;
@@ -85,8 +86,9 @@ public:
         juce::String labelText = laneName;
         if (laneName == "NOTE") labelText = "NO\nTE";
         else if (laneName == "OCT") labelText = "OC\nTA\nVE";
-        else if (laneName == "VEL") labelText = "VEL\nOC\nITY";
+        else if (laneName == "VEL") labelText = "VE\nLO\nCI\nTY";
         else if (laneName == "LEN") labelText = "LE\nNG\nTH";
+        else if (laneName == "PRESSURE") labelText = "PR\nES\nSU\nRE";
         else if (laneName.startsWith("CC ")) labelText = laneName.replace(" ", "\n");
         
         g.drawFittedText(labelText, resetBtnRect, juce::Justification::centred, 3);
@@ -162,11 +164,11 @@ public:
         valDirRect = valDirRect.reduced(1);
         
         // Random Button (Row 2, Col 1)
-        juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
+        juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
         randomRect = randomRect.reduced(1);
         
         // Random Range Slider (Row 2, Col 2)
-        juce::Rectangle<int> randomRangeRect(col2_X, (ctrlH + gap) * 2, 40, ctrlH);
+        juce::Rectangle<int> randomRangeRect(col2_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
         randomRangeRect = randomRangeRect.reduced(1);
 
         // Trigger Controls (Bottom Up)
@@ -264,11 +266,11 @@ public:
                 p.addTriangle(cx - s, cy - s, cx - s, cy + s, cx + s, cy);
             }
             
-            g.setColour(laneColor);
-            g.fillRect(r);
             g.setColour(juce::Colours::black);
-            g.fillRect(r.reduced(1));
+            g.fillRect(r);
+            
             g.setColour(laneColor);
+            g.drawRect(r, 1);
             g.fillPath(p);
         };
         
@@ -386,7 +388,7 @@ public:
             // Highlight current step
             if (i == (size_t)laneData.activeValueStep)
             {
-                g.setColour(laneColor.brighter(0.5f).withAlpha(0.5f));
+                g.setColour(laneColor.darker(1.0f).withAlpha(0.5f));
                 g.fillRect(effectiveBarArea);
             }
 
@@ -403,7 +405,7 @@ public:
             // Highlight current trigger step
             if (i == (size_t)laneData.activeTriggerStep)
             {
-                g.setColour(laneColor.brighter(0.5f).withAlpha(0.5f));
+                g.setColour(laneColor.darker(1.0f).withAlpha(0.5f));
                 g.fillRect(btnArea);
             }
         }
@@ -456,7 +458,7 @@ public:
                 if (e.y >= triggerHeight && e.y < h - triggerHeight)
                 {
                     // Check if clicking the label area
-                    int btnH = 60;
+                    int btnH = 70;
                     int btnY = (h - btnH) / 2;
                     if (e.y >= btnY && e.y < btnY + btnH)
                     {
@@ -548,7 +550,7 @@ public:
             }
             
             // Random Button (3 - Row 2 Col 1)
-            if (e.x >= col1_X && e.x < col1_X + 40 && e.y >= (ctrlH + gap) * 2 && e.y < (ctrlH + gap) * 2 + ctrlH)
+            if (e.x >= col1_X && e.x < col1_X + 40 && e.y >= (ctrlH + gap) * 2 + 3 && e.y < (ctrlH + gap) * 2 + ctrlH + 3)
             {
                 if (e.mods.isShiftDown())
                     randomizeTriggers();
@@ -558,7 +560,7 @@ public:
             }
             
             // Random Range (Row 2 Col 2)
-            if (e.x >= col2_X && e.x < col2_X + 40 && e.y >= (ctrlH + gap) * 2 && e.y < (ctrlH + gap) * 2 + ctrlH)
+            if (e.x >= col2_X && e.x < col2_X + 40 && e.y >= (ctrlH + gap) * 2 + 3 && e.y < (ctrlH + gap) * 2 + ctrlH + 3)
             {
                 isDraggingRandomRange = true;
                 lastMouseY = e.y;
@@ -931,7 +933,7 @@ public:
         int col1_X = getWidth() - 120;
         int ctrlH = 24;
         int gap = 1;
-        juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
+        juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
         randomRect = randomRect.reduced(1);
         
         bool nowHovering = randomRect.contains(e.getPosition());
@@ -950,7 +952,7 @@ public:
             int col1_X = getWidth() - 120;
             int ctrlH = 24;
             int gap = 1;
-            juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
+            juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
             randomRect = randomRect.reduced(1);
             repaint(randomRect);
         }
@@ -963,7 +965,7 @@ public:
             int col1_X = getWidth() - 120;
             int ctrlH = 24;
             int gap = 1;
-            juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2, 40, ctrlH);
+            juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
             randomRect = randomRect.reduced(1);
             repaint(randomRect);
         }
@@ -1178,7 +1180,7 @@ private:
 class MasterTriggerComponent : public juce::Component
 {
 public:
-    MasterTriggerComponent(ShequencerAudioProcessor& p) : processor(p) {}
+    MasterTriggerComponent(ShequencerAudioProcessor& p) : processor(p) { setOpaque(true); }
     
     void paint(juce::Graphics& g) override
     {
@@ -1212,7 +1214,7 @@ public:
         
         // Top Row: Shift L | Length | Shift R
         int topRowH = 24;
-        int topRowY = 8; // Shifted down by 8px
+        int topRowY = 5; // Shifted down by 5px
         
         juce::Rectangle<int> shiftL(col1_X, topRowY, 20, topRowH);
         shiftL = shiftL.reduced(1);
@@ -1251,11 +1253,11 @@ public:
                 p.addTriangle(cx - s, cy - s, cx - s, cy + s, cx + s, cy);
             }
             
-            g.setColour(Theme::masterColor);
-            g.fillRect(r);
             g.setColour(juce::Colours::black);
-            g.fillRect(r.reduced(1));
+            g.fillRect(r);
+            
             g.setColour(Theme::masterColor);
+            g.drawRect(r, 1);
             g.fillPath(p);
         };
         
@@ -1266,7 +1268,7 @@ public:
         // Probability Slider (Below Top Row)
         // Full width of the 3 buttons (20+40+20 = 80)
         // Height 14px
-        int sliderY = topRowY + topRowH + 2; // 8 + 24 + 2 = 34
+        int sliderY = topRowY + topRowH + 1; // 5 + 24 + 1 = 30
         int sliderH = 12; // Reduced slightly to ensure it fits
         juce::Rectangle<int> probRect(col1_X, sliderY, 80, sliderH);
         probRect = probRect.reduced(1);
@@ -1322,7 +1324,7 @@ public:
             // Highlight current master step
             if (i == (size_t)processor.currentMasterStep)
             {
-                g.setColour(Theme::masterColor.brighter(0.5f).withAlpha(0.5f));
+                g.setColour(Theme::masterColor.darker(1.0f).withAlpha(0.5f));
                 g.fillRect(squareArea);
             }
         }
@@ -1342,7 +1344,7 @@ public:
             }
             else
             {
-                processor.masterTriggers.fill(true);
+                processor.masterTriggers.fill(false);
                 processor.masterLength = 16;
             }
             repaint();
@@ -1353,7 +1355,7 @@ public:
         int col1_X = rightMarginX;
         
         int topRowH = 24;
-        int topRowY = 8;
+        int topRowY = 5;
         
         // Handle Length (Col A)
         if (e.x >= col1_X + 20 && e.x < col1_X + 60 && e.y >= topRowY && e.y < topRowY + topRowH)
@@ -1381,7 +1383,7 @@ public:
         }
         
         // Handle Probability Slider
-        int sliderY = topRowY + topRowH + 2; // 34
+        int sliderY = topRowY + topRowH + 1; // 30
         int sliderH = 14; // Hit area slightly larger than visual 12
         if (e.x >= col1_X && e.x < col1_X + 80 && e.y >= sliderY && e.y < sliderY + sliderH)
         {
@@ -1677,6 +1679,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
     
     void updatePageVisibility();
     int currentPage = 0;

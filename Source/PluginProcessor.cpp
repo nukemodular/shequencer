@@ -8,7 +8,7 @@ ShequencerAudioProcessor::ShequencerAudioProcessor()
     // Initialize default values
     masterTriggers.fill(false);
     masterProbEnabled.fill(false);
-    masterProbability = 100;
+    masterProbability = 50;
     
     noteLane.values.fill(0); // C
     noteLane.triggers.fill(true);
@@ -208,6 +208,21 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         if (auto ppq = pos.getPpqPosition())
             lastPositionInQuarterNotes = *ppq;
             
+        // Check if we are starting mid-bar
+        if (auto barStart = pos.getPpqPositionOfLastBarStart())
+        {
+            double currentPPQ = *pos.getPpqPosition();
+            if (currentPPQ > *barStart + 0.05) // Tolerance
+            {
+                waitingForBarSync = true;
+            }
+            else
+            {
+                waitingForBarSync = false;
+            }
+            lastBarStartPPQ = *barStart;
+        }
+            
         // Reset offsets on start to ensure alignment with grid
         globalStepOffset = 0;
         noteLane.triggerStepOffset = 0;
@@ -232,6 +247,14 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     {
         if (std::abs(*barStart - lastBarStartPPQ) > 0.0001)
         {
+            // New Bar Detected
+            if (waitingForBarSync)
+            {
+                waitingForBarSync = false;
+                syncAllToBar();
+                resetAllLanes();
+            }
+            
             auto checkReset = [](SequencerLane& lane) {
                 if (lane.resetValuesAtNextBar) {
                     lane.currentValueStep = lane.valueLoopLength - 1;
@@ -251,6 +274,8 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
         lastBarStartPPQ = *barStart;
     }
+    
+    if (waitingForBarSync) return; // Wait for next bar
     
     // Handle Automatic Resets (Intervals)
     // We need to track bar changes relative to the start of playback or some reference
@@ -493,8 +518,8 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  bool extended = false;
                  
                  // Check if we are continuing a hold chain
-                 // Only extend if there is NO new trigger (Gate OFF)
-                 if (isHoldActive && lastTriggeredNoteIndex >= 0 && !masterTriggers[(size_t)stepIdx])
+                 // Only extend if there is NO new trigger (Gate OFF) OR if it is an explicit HOLD step
+                 if (isHoldActive && lastTriggeredNoteIndex >= 0 && (!masterTriggers[(size_t)stepIdx] || isHoldStep))
                  {
                      // Verify note is still active
                      bool noteFound = false;
@@ -588,6 +613,10 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     if (lane.midiCC == 128) // PGM
                     {
                         midiMessages.addEvent(juce::MidiMessage::programChange(1, val), sampleOffset);
+                    }
+                    else if (lane.midiCC == 129) // A.TOUCH
+                    {
+                        midiMessages.addEvent(juce::MidiMessage::channelPressureChange(1, val), sampleOffset);
                     }
                     else if (lane.midiCC >= 1 && lane.midiCC <= 127)
                     {
@@ -1259,7 +1288,7 @@ void ShequencerAudioProcessor::resetAllLanes()
     resetLane(velocityLane, 64); // 64
     resetLane(lengthLane, 5);    // 32n
     
-    masterTriggers.fill(true);
+    masterTriggers.fill(false);
     masterLength = 16;
 }
 

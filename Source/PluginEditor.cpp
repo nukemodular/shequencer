@@ -34,6 +34,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
       }),
       masterTriggerComp(p), bankSelectorComp(p), patternSlotsComp(p), shuffleComp(p), fileOpsComp(p)
 {
+    setWantsKeyboardFocus(true);
     addAndMakeVisible(mainContainer);
     mainContainer.addAndMakeVisible(masterTriggerComp);
     mainContainer.addAndMakeVisible(pageSelectorComp);
@@ -140,18 +141,21 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
                 juce::PopupMenu m;
                 m.addItem(1, "OFF", true, lane.midiCC == 0);
                 m.addItem(2, "PGM", true, lane.midiCC == 128);
+                m.addItem(3, "PRESSURE", true, lane.midiCC == 129);
                 for(int i=1; i<=127; ++i)
-                    m.addItem(i+2, "CC " + juce::String(i), true, lane.midiCC == i);
+                    m.addItem(i+3, "CC " + juce::String(i), true, lane.midiCC == i);
                 
                 m.showMenuAsync(juce::PopupMenu::Options(), [&lane, &comp](int result) {
                     if (result == 1) lane.midiCC = 0;
                     else if (result == 2) lane.midiCC = 128;
-                    else if (result > 2) lane.midiCC = result - 2;
+                    else if (result == 3) lane.midiCC = 129;
+                    else if (result > 3) lane.midiCC = result - 3;
                     
                     if (result > 0) {
                         juce::String newName;
                         if (lane.midiCC == 0) newName = "OFF";
                         else if (lane.midiCC == 128) newName = "PGM";
+                        else if (lane.midiCC == 129) newName = "PRESSURE";
                         else newName = "CC " + juce::String(lane.midiCC);
                         
                         comp->setLaneName(newName);
@@ -164,6 +168,7 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
         juce::String initialName;
         if (lane.midiCC == 0) initialName = "OFF";
         else if (lane.midiCC == 128) initialName = "PGM";
+        else if (lane.midiCC == 129) initialName = "PRESSURE";
         else initialName = "CC " + juce::String(lane.midiCC);
         
         comp->setLaneName(initialName);
@@ -311,4 +316,17 @@ void ShequencerAudioProcessorEditor::resized()
     
     // Middle: Slots
     patternSlotsComp.setBounds(patternRow);
+}
+
+bool ShequencerAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::tabKey)
+    {
+        currentPage = !currentPage;
+        pageSelectorComp.currentPage = currentPage;
+        updatePageVisibility();
+        pageSelectorComp.repaint();
+        return true;
+    }
+    return false;
 }
