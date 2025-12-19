@@ -309,9 +309,11 @@ public:
         drawTriangle(trigShiftR, false);
 
         // Color Picker Button (Row 2, Col 3)
-        int col3_X = rightMarginX + 80;
-        int colorBtnSize = 16;
-        int colorBtnX = col3_X + (40 - colorBtnSize) / 2;
+        // Align with Page Button (approx 15px from right edge)
+        // Page Button Center is at getWidth() - 15
+        // We want center at getWidth() - 15
+        int colorBtnSize = 10; // 2/3 of 16
+        int colorBtnX = getWidth() - 15 - (colorBtnSize / 2);
         int colorBtnY = (ctrlH + gap) * 2 + 3 + (ctrlH - colorBtnSize) / 2;
         
         juce::Rectangle<int> colorBtnRect(colorBtnX, colorBtnY, colorBtnSize, colorBtnSize);
@@ -609,6 +611,7 @@ public:
             }
 
             // Color Picker (Row 2, Col 3)
+            // Hit area larger (the whole 40px column)
             int col3_X = rightMarginX + 80;
             if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= (ctrlH + gap) * 2 + 3 && e.y < (ctrlH + gap) * 2 + ctrlH + 3)
             {
@@ -1328,9 +1331,9 @@ public:
         drawTriangle(shiftR, false);
         
         // Color Picker Button (Col 3)
-        int col3_X = rightMarginX + 80;
-        int colorBtnSize = 16;
-        int colorBtnX = col3_X + (40 - colorBtnSize) / 2;
+        // Align with Page Button (approx 15px from right edge)
+        int colorBtnSize = 10; // 2/3 of 16
+        int colorBtnX = getWidth() - 15 - (colorBtnSize / 2);
         int colorBtnY = (getHeight() - colorBtnSize) / 2;
         
         juce::Rectangle<int> colorBtnRect(colorBtnX, colorBtnY, colorBtnSize, colorBtnSize);
@@ -1456,8 +1459,8 @@ public:
         }
         
         // Handle Color Picker (Col 3)
+        // Hit area larger (the whole 40px column)
         int col3_X = rightMarginX + 80;
-        // Hit area larger
         if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= 0 && e.y < getHeight())
         {
             if (e.mods.isShiftDown())
