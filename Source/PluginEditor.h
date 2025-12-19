@@ -217,6 +217,14 @@ public:
         g.setColour(getEffectiveColor());
         g.fillRect(resetBtnRect);
         
+        // Color Picker Dot (Right of Reset Button)
+        int dotSize = 10;
+        int dotX = btnX + btnW + 2; // 12 + 36 + 2 = 50
+        int dotY = btnY + (btnH - dotSize) / 2;
+        
+        g.setColour(getEffectiveColor());
+        g.fillEllipse((float)dotX, (float)dotY, (float)dotSize, (float)dotSize);
+        
         g.setColour(juce::Colours::black);
         g.setFont(juce::FontOptions("Arial", 16.0f, juce::Font::bold));
         
@@ -416,19 +424,6 @@ public:
         drawTriangle(trigShiftL, true);
         drawTriangle(trigShiftR, false);
 
-        // Color Picker Button (Row 2, Col 3)
-        // Align with Page Button (approx 15px from right edge)
-        // Page Button Center is at getWidth() - 15
-        // We want center at getWidth() - 15
-        int colorBtnSize = 10; // 2/3 of 16
-        int colorBtnX = getWidth() - 15 - (colorBtnSize / 2);
-        int colorBtnY = (ctrlH + gap) * 2 + 3 + (ctrlH - colorBtnSize) / 2;
-        
-        juce::Rectangle<int> colorBtnRect(colorBtnX, colorBtnY, colorBtnSize, colorBtnSize);
-        
-        g.setColour(getEffectiveColor());
-        g.fillEllipse(colorBtnRect.toFloat());
-
         // Draw Random Button
         g.setColour(getEffectiveColor());
         g.fillRect(randomRect);
@@ -609,7 +604,30 @@ public:
                 {
                     // Check if clicking the label area
                     int btnH = 70;
+                    int btnW = 36;
+                    int btnX = 12;
                     int btnY = (h - btnH) / 2;
+                    
+                    // Color Picker Dot (Right of Reset Button)
+                    int dotSize = 10;
+                    int dotX = btnX + btnW + 2; // 50
+                    int dotY = btnY + (btnH - dotSize) / 2;
+                    
+                    if (e.x >= dotX && e.x < dotX + dotSize && e.y >= dotY && e.y < dotY + dotSize)
+                    {
+                        if (e.mods.isShiftDown())
+                        {
+                            laneData.customColor = juce::Colours::transparentBlack;
+                            repaint();
+                        }
+                        else
+                        {
+                            auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
+                            client->setTopLeftPosition(e.getScreenPosition());
+                        }
+                        return;
+                    }
+                    
                     if (e.y >= btnY && e.y < btnY + btnH)
                     {
                         if (onLabelClicked) onLabelClicked(e.mods.isShiftDown());
@@ -715,24 +733,6 @@ public:
                 isDraggingRandomRange = true;
                 lastMouseY = e.y;
                 lastMouseX = e.x;
-                return;
-            }
-
-            // Color Picker (Row 2, Col 3)
-            // Hit area larger (the whole 40px column)
-            int col3_X = rightMarginX + 80;
-            if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= (ctrlH + gap) * 2 + 3 && e.y < (ctrlH + gap) * 2 + ctrlH + 3)
-            {
-                if (e.mods.isShiftDown())
-                {
-                    laneData.customColor = juce::Colours::transparentBlack;
-                    repaint();
-                }
-                else
-                {
-                    auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
-                    client->setTopLeftPosition(e.getScreenPosition());
-                }
                 return;
             }
 
@@ -1437,16 +1437,13 @@ public:
         drawTriangle(shiftL, true);
         drawTriangle(shiftR, false);
         
-        // Color Picker Button (Col 3)
-        // Align with Page Button (approx 15px from right edge)
-        int colorBtnSize = 10; // 2/3 of 16
-        int colorBtnX = getWidth() - 15 - (colorBtnSize / 2);
-        int colorBtnY = (getHeight() - colorBtnSize) / 2;
-        
-        juce::Rectangle<int> colorBtnRect(colorBtnX, colorBtnY, colorBtnSize, colorBtnSize);
+        // Color Picker Dot (Right of GATE Button)
+        int dotSize = 10;
+        int dotX = btnX + btnW + 2; // 50
+        int dotY = btnY + (btnH - dotSize) / 2;
         
         g.setColour(getEffectiveColor());
-        g.fillEllipse(colorBtnRect.toFloat());
+        g.fillEllipse((float)dotX, (float)dotY, (float)dotSize, (float)dotSize);
         
         // Probability Slider (Below Top Row)
         // Full width of the 3 buttons (20+40+20 = 80)
@@ -1521,6 +1518,32 @@ public:
         // Handle GATE Reset Button (Left Area)
         if (e.x < 60)
         {
+            // Check Color Picker Dot
+            int btnH = 60;
+            int btnW = 36;
+            int btnX = 12;
+            int btnY = (getHeight() - btnH) / 2;
+            if (btnY < 0) { btnY = 0; btnH = getHeight(); }
+            
+            int dotSize = 10;
+            int dotX = btnX + btnW + 2; // 50
+            int dotY = btnY + (btnH - dotSize) / 2;
+            
+            if (e.x >= dotX && e.x < dotX + dotSize && e.y >= dotY && e.y < dotY + dotSize)
+            {
+                if (e.mods.isShiftDown())
+                {
+                    processor.masterColor = juce::Colours::transparentBlack;
+                    repaint();
+                }
+                else
+                {
+                    auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
+                    client->setTopLeftPosition(e.getScreenPosition());
+                }
+                return;
+            }
+            
             if (e.mods.isAltDown())
             {
                 processor.resetAllLanes();
@@ -1562,24 +1585,6 @@ public:
         {
             processor.shiftMasterTriggers(1);
             repaint();
-            return;
-        }
-        
-        // Handle Color Picker (Col 3)
-        // Hit area larger (the whole 40px column)
-        int col3_X = rightMarginX + 80;
-        if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= 0 && e.y < getHeight())
-        {
-            if (e.mods.isShiftDown())
-            {
-                processor.masterColor = juce::Colours::transparentBlack;
-                repaint();
-            }
-            else
-            {
-                auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
-                client->setTopLeftPosition(e.getScreenPosition());
-            }
             return;
         }
         
