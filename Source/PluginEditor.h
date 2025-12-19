@@ -620,8 +620,8 @@ public:
                 else
                 {
                     auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
-                    auto* box = juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
-                    box->setArrowSize(0.0f);
+                    auto& box = juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
+                    box.setArrowSize(0.0f);
                 }
                 return;
             }
@@ -1468,8 +1468,8 @@ public:
             else
             {
                 auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
-                auto* box = juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
-                box->setArrowSize(0.0f);
+                auto& box = juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
+                box.setArrowSize(0.0f);
             }
             return;
         }
