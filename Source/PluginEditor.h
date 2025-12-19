@@ -28,7 +28,7 @@ public:
         selector.setCurrentColour(initialColor);
         selector.addChangeListener(this);
         addAndMakeVisible(selector);
-        setSize(300, 400);
+        setSize(200, 200);
     }
     
     void resized() override { selector.setBounds(getLocalBounds()); }
@@ -39,7 +39,7 @@ public:
         if (onUpdate) onUpdate();
     }
     
-    juce::ColourSelector selector;
+    juce::ColourSelector selector { juce::ColourSelector::showColourspace };
     juce::Colour& targetColor;
     std::function<void()> onUpdate;
 };
@@ -612,8 +612,16 @@ public:
             int col3_X = rightMarginX + 80;
             if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= (ctrlH + gap) * 2 + 3 && e.y < (ctrlH + gap) * 2 + ctrlH + 3)
             {
-                auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
-                juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
+                if (e.mods.isShiftDown())
+                {
+                    laneData.customColor = juce::Colours::transparentBlack;
+                    repaint();
+                }
+                else
+                {
+                    auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
+                    juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
+                }
                 return;
             }
 
@@ -1451,8 +1459,16 @@ public:
         // Hit area larger
         if (e.x >= col3_X && e.x < col3_X + 40 && e.y >= 0 && e.y < getHeight())
         {
-            auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
-            juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
+            if (e.mods.isShiftDown())
+            {
+                processor.masterColor = juce::Colours::transparentBlack;
+                repaint();
+            }
+            else
+            {
+                auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
+                juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
+            }
             return;
         }
         
