@@ -1183,10 +1183,10 @@ public:
         // Color same as shuffle (Theme::slotsColor) but alpha 0.33f
         g.setColour(Theme::slotsColor.withAlpha(0.33f));
         
-        g.setFont(juce::FontOptions("Arial", 10.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions("Arial", 9.0f, juce::Font::bold));
         
-        juce::String buildStr = juce::String::formatted("b.%03d", BUILD_NUMBER);
-        g.drawText(buildStr, area, juce::Justification::centred);
+        juce::String buildStr = juce::String::formatted("build\n1.%03d", BUILD_NUMBER);
+        g.drawFittedText(buildStr, area, juce::Justification::centred, 2);
     }
 };
 
