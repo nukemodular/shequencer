@@ -19,65 +19,137 @@ namespace Theme
     static juce::Font getValueFont() { return juce::FontOptions("Arial", 50.0f, juce::Font::bold); }
 }
 
-class ColorPickerClient : public juce::Component
+class ColorPickerClient : public juce::Component, public juce::GlobalMouseListener
 {
 public:
     ColorPickerClient(juce::Colour& target, juce::Colour initialColor, std::function<void()> callback)
         : targetColor(target), onUpdate(callback)
     {
-        currentHue = target.isTransparent() ? initialColor.getHue() : target.getHue();
-        setSize(30, 120);
+        if (target.isTransparent())
+        {
+            currentHue = initialColor.getHue();
+            currentSat = initialColor.getSaturation();
+            currentBri = initialColor.getBrightness();
+        }
+        else
+        {
+            currentHue = target.getHue();
+            currentSat = target.getSaturation();
+            currentBri = target.getBrightness();
+        }
+        
+        setSize(90, 120);
+        addToDesktop(juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowHasDropShadow);
+        setVisible(true);
+        toFront(true);
+        juce::Desktop::getInstance().addGlobalMouseListener(this);
     }
     
-    void paint(juce::Graphics& g) override
+    ~ColorPickerClient() override
     {
-        juce::ColourGradient gradient;
-        gradient.point1 = { 0.0f, 0.0f };
-        gradient.point2 = { 0.0f, (float)getHeight() };
-        
-        gradient.addColour(0.0f, juce::Colours::red);
-        gradient.addColour(1.0f/6.0f, juce::Colours::yellow);
-        gradient.addColour(2.0f/6.0f, juce::Colour(0xFF00FF00)); // Lime
-        gradient.addColour(3.0f/6.0f, juce::Colours::cyan);
-        gradient.addColour(4.0f/6.0f, juce::Colours::blue);
-        gradient.addColour(5.0f/6.0f, juce::Colours::magenta);
-        gradient.addColour(1.0f, juce::Colours::red);
-        
-        g.setGradientFill(gradient);
-        g.fillAll();
-        
-        float y = currentHue * (float)getHeight();
-        
-        g.setColour(juce::Colours::white);
-        g.drawRect(0, (int)y - 2, getWidth(), 5, 2);
-        g.setColour(juce::Colours::black);
-        g.drawRect(0, (int)y - 2, getWidth(), 5, 1);
+        juce::Desktop::getInstance().removeGlobalMouseListener(this);
     }
     
     void mouseDown(const juce::MouseEvent& e) override
     {
-        updateColor(e.y);
+        if (e.originalComponent != this && !isParentOf(e.originalComponent))
+        {
+            // Clicked outside
+            juce::MessageManager::callAsync([this]() { delete this; });
+            return;
+        }
+        handleMouse(e);
     }
     
     void mouseDrag(const juce::MouseEvent& e) override
     {
-        updateColor(e.y);
+        if (e.originalComponent == this)
+            handleMouse(e);
     }
     
-    void updateColor(int y)
+    void handleMouse(const juce::MouseEvent& e)
     {
-        float normY = (float)y / (float)getHeight();
+        int col = e.x / 30;
+        float normY = (float)e.y / (float)getHeight();
         normY = juce::jlimit(0.0f, 1.0f, normY);
-        currentHue = normY;
         
-        targetColor = juce::Colour::fromHSV(currentHue, 1.0f, 1.0f, 1.0f);
-        if (onUpdate) onUpdate();
+        if (col == 0) currentHue = normY;
+        else if (col == 1) currentSat = 1.0f - normY;
+        else if (col == 2) currentBri = 1.0f - normY;
+        
+        updateTarget();
         repaint();
+    }
+    
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colours::darkgrey); // Background
+        
+        // Hue (Col 0)
+        {
+            juce::ColourGradient grad;
+            grad.point1 = { 15.0f, 0.0f };
+            grad.point2 = { 15.0f, (float)getHeight() };
+            for(float i=0.0f; i<=1.0f; i+=0.1f) grad.addColour(i, juce::Colour::fromHSV(i, 1.0f, 1.0f, 1.0f));
+            g.setGradientFill(grad);
+            g.fillRect(0, 0, 30, getHeight());
+            
+            float y = currentHue * getHeight();
+            g.setColour(juce::Colours::black);
+            g.drawRect(0, (int)y-2, 30, 4, 2);
+            g.setColour(juce::Colours::white);
+            g.drawRect(0, (int)y-2, 30, 4, 1);
+        }
+        
+        // Sat (Col 1)
+        {
+            juce::ColourGradient grad;
+            grad.point1 = { 45.0f, 0.0f };
+            grad.point2 = { 45.0f, (float)getHeight() };
+            // Top: Pure Color (Sat 1), Bottom: White (Sat 0)
+            grad.addColour(0.0f, juce::Colour::fromHSV(currentHue, 1.0f, 1.0f, 1.0f));
+            grad.addColour(1.0f, juce::Colour::fromHSV(currentHue, 0.0f, 1.0f, 1.0f));
+            g.setGradientFill(grad);
+            g.fillRect(30, 0, 30, getHeight());
+            
+            float y = (1.0f - currentSat) * getHeight();
+            g.setColour(juce::Colours::black);
+            g.drawRect(30, (int)y-2, 30, 4, 2);
+            g.setColour(juce::Colours::white);
+            g.drawRect(30, (int)y-2, 30, 4, 1);
+        }
+        
+        // Bri (Col 2)
+        {
+            juce::ColourGradient grad;
+            grad.point1 = { 75.0f, 0.0f };
+            grad.point2 = { 75.0f, (float)getHeight() };
+            // Top: Pure Color (Bri 1), Bottom: Black (Bri 0)
+            grad.addColour(0.0f, juce::Colour::fromHSV(currentHue, currentSat, 1.0f, 1.0f));
+            grad.addColour(1.0f, juce::Colours::black);
+            g.setGradientFill(grad);
+            g.fillRect(60, 0, 30, getHeight());
+            
+            float y = (1.0f - currentBri) * getHeight();
+            g.setColour(juce::Colours::white);
+            g.drawRect(60, (int)y-2, 30, 4, 2);
+            g.setColour(juce::Colours::black);
+            g.drawRect(60, (int)y-2, 30, 4, 1);
+        }
+        
+        g.setColour(juce::Colours::black);
+        g.drawRect(getLocalBounds(), 1);
+    }
+    
+    void updateTarget()
+    {
+        targetColor = juce::Colour::fromHSV(currentHue, currentSat, currentBri, 1.0f);
+        if (onUpdate) onUpdate();
     }
     
     juce::Colour& targetColor;
     std::function<void()> onUpdate;
-    float currentHue;
+    float currentHue, currentSat, currentBri;
 };
 
 class LaneComponent : public juce::Component
@@ -659,8 +731,7 @@ public:
                 else
                 {
                     auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
-                    auto& box = juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
-                    box.setArrowSize(0.0f);
+                    client->setTopLeftPosition(e.getScreenPosition());
                 }
                 return;
             }
@@ -1507,8 +1578,7 @@ public:
             else
             {
                 auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
-                auto& box = juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().translated(e.x, e.y), nullptr);
-                box.setArrowSize(0.0f);
+                client->setTopLeftPosition(e.getScreenPosition());
             }
             return;
         }
