@@ -297,22 +297,22 @@ void ShequencerAudioProcessorEditor::resized()
     
     auto patternRow = area.removeFromTop(40);
     
-    // Left: Bank Selector (40px) + Gap (20px)
-    auto leftArea = patternRow.removeFromLeft(60);
-    bankSelectorComp.setBounds(leftArea.withSizeKeepingCentre(40, 40));
+    // Left: FileOps, Shuffle, BuildNumber (130px)
+    auto leftArea = patternRow.removeFromLeft(130);
     
-    // Right: Shuffle (Aligned with Loop Lengths) and FileOps (Aligned with Shift Buttons)
+    // FileOps at Col 1
+    fileOpsComp.setBounds(leftArea.getX() + 10, leftArea.getY() + 8, 40, 24);
     
-    auto rightArea = patternRow.removeFromRight(130);
+    // Shuffle at Col 2
+    shuffleComp.setBounds(leftArea.getX() + 10 + 40, leftArea.getY() + 8, 40, 24);
     
-    // Shuffle at Col 2 (50 relative to rightArea)
-    shuffleComp.setBounds(rightArea.getX() + 10 + 40, rightArea.getY() + 8, 40, 24);
+    // Build Number at Col 3
+    buildNumberComp.setBounds(leftArea.getX() + 10 + 80, leftArea.getY() + 8, 40, 24);
     
-    // FileOps at Col 1 (10 relative to rightArea)
-    fileOpsComp.setBounds(rightArea.getX() + 10, rightArea.getY() + 8, 40, 24);
-    
-    // Build Number at Col 3 (90 relative to rightArea)
-    buildNumberComp.setBounds(rightArea.getX() + 10 + 80, rightArea.getY() + 8, 40, 24);
+    // Right: Bank Selector (60px)
+    auto rightArea = patternRow.removeFromRight(60);
+    // 2/3 size of 40 is approx 27. Let's use 28.
+    bankSelectorComp.setBounds(rightArea.withSizeKeepingCentre(28, 28));
     
     // Middle: Slots
     patternSlotsComp.setBounds(patternRow);
