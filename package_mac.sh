@@ -8,6 +8,10 @@ AU_PATH="$BUILD_DIR/AU/$PRODUCT_NAME.component"
 VST3_PATH="$BUILD_DIR/VST3/$PRODUCT_NAME.vst3"
 STAGING_DIR="build/dmg_staging"
 
+# Identity Configuration
+DEV_ID_APP="Developer ID Application: Dominik Bohn (3J6FW877T8)"
+NOTARY_PROFILE="toolboy-audio"
+
 # Signing Identity - Try to find it or use environment variable
 if [ -z "$DEV_ID_APP" ]; then
     echo "Searching for Developer ID Application identity..."

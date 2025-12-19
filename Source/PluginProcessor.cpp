@@ -52,7 +52,7 @@ ShequencerAudioProcessor::~ShequencerAudioProcessor()
 
 const juce::String ShequencerAudioProcessor::getName() const
 {
-    return "toolBoy Sh-equencer v1";
+    return "toolBoy SH-equencer v1";
 }
 
 bool ShequencerAudioProcessor::acceptsMidi() const
@@ -156,14 +156,30 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         
         if (msg.isNoteOn())
         {
+            int channel = msg.getChannel();
             int note = msg.getNoteNumber();
-            // Map MIDI notes 0-63 to Patterns (Bank 0-3, Slot 0-15)
-            if (note >= 0 && note < 64)
+            
+            if (channel == 2)
             {
-                int bank = note / 16;
-                int slot = note % 16;
-                loadPattern(bank, slot);
-                isControlMessage = true;
+                // Map MIDI notes 0-63 to Patterns (Bank 0-3, Slot 0-15)
+                if (note >= 0 && note < 64)
+                {
+                    int bank = note / 16;
+                    int slot = note % 16;
+                    loadPattern(bank, slot);
+                    isControlMessage = true;
+                }
+            }
+            else if (channel == 1)
+            {
+                // Transposition (Center at 60)
+                transposeOffset = note - 60;
+                
+                // If NOT in MIDI Gate Mode, consume the message.
+                // If IN MIDI Gate Mode, let it pass through to be used as a gate trigger.
+                if (!isMidiGateMode) {
+                    isControlMessage = true;
+                }
             }
         }
         
@@ -200,6 +216,46 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
              
         for (auto& note : activeNotes) note.isActive = false;
         return;
+    }
+
+    // Handle MIDI Input for Gate Mode
+    // We need to process MIDI events in time order relative to the grid steps
+    // So we collect them here, but process them inside the grid loop
+    struct MidiEvent {
+        int sampleOffset;
+        bool isNoteOn;
+        int noteNumber;
+    };
+    std::vector<MidiEvent> midiEvents;
+
+    if (isMidiGateMode)
+    {
+        for (const auto metadata : midiMessages)
+        {
+            auto msg = metadata.getMessage();
+            if (msg.isNoteOn())
+            {
+                midiEvents.push_back({metadata.samplePosition, true, msg.getNoteNumber()});
+            }
+            else if (msg.isNoteOff())
+            {
+                midiEvents.push_back({metadata.samplePosition, false, msg.getNoteNumber()});
+            }
+        }
+        
+        // Filter out Note On/Off from passing through, but keep CCs
+        // IMPORTANT: We must NOT clear the buffer if we want other plugins to receive it?
+        // But this is an instrument/sequencer, so we usually replace the output.
+        // We are generating our own notes, so we should filter out the input notes
+        // to avoid double triggering or passing through the raw gate notes.
+        juce::MidiBuffer processedMidi;
+        for (const auto metadata : midiMessages)
+        {
+            auto msg = metadata.getMessage();
+            if (!msg.isNoteOn() && !msg.isNoteOff())
+                processedMidi.addEvent(msg, metadata.samplePosition);
+        }
+        midiMessages.swapWith(processedMidi);
     }
 
     if (!isPlaying)
@@ -361,6 +417,49 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     double stepDuration = 0.25; // 16th note
     double maxDelay = 0.125; // 32nd note
     
+    int currentSamplePos = 0;
+    
+    auto sendCC = [&](SequencerLane& lane, int offset, int val) {
+        if (lane.midiCC == 128) // PGM
+            midiMessages.addEvent(juce::MidiMessage::programChange(1, val), offset);
+        else if (lane.midiCC == 129) // A.TOUCH
+            midiMessages.addEvent(juce::MidiMessage::channelPressureChange(1, val), offset);
+        else if (lane.midiCC >= 1 && lane.midiCC <= 127)
+            midiMessages.addEvent(juce::MidiMessage::controllerEvent(1, lane.midiCC, val), offset);
+    };
+    
+    auto processCCRamps = [&](int startSample, int count) {
+        for (auto* lane : {&ccLane1, &ccLane2, &ccLane3, &ccLane4}) {
+            if (lane->midiCC == 0) continue;
+            if (!lane->isRamping) continue;
+            
+            for (int i = 0; i < count; ++i) {
+                if (lane->rampSamplesRemaining <= 0) {
+                    lane->isRamping = false;
+                    lane->currentSmoothedValue = (float)lane->targetCCValue;
+                    
+                    if (lane->lastSentCCValue != lane->targetCCValue) {
+                        sendCC(*lane, startSample + i, lane->targetCCValue);
+                        lane->lastSentCCValue = lane->targetCCValue;
+                    }
+                    break;
+                }
+                
+                lane->currentSmoothedValue += lane->rampIncrement;
+                lane->rampSamplesRemaining--;
+                
+                // Rate limit: every 128 samples (~2.9ms at 44.1k)
+                if (i % 128 == 0) {
+                    int val = (int)lane->currentSmoothedValue;
+                    if (val != lane->lastSentCCValue) {
+                        sendCC(*lane, startSample + i, val);
+                        lane->lastSentCCValue = val;
+                    }
+                }
+            }
+        }
+    };
+    
     double searchStart = currentPPQ;
     double searchEnd = endPPQ;
     
@@ -405,6 +504,44 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             int sampleOffset = (int)(offsetPPQ * samplesPerQuarterNote);
             sampleOffset = juce::jlimit(0, numSamples - 1, sampleOffset);
             
+            // Process Ramps up to here
+            int samplesToProcess = sampleOffset - currentSamplePos;
+            if (samplesToProcess > 0) processCCRamps(currentSamplePos, samplesToProcess);
+            currentSamplePos = sampleOffset;
+            
+            // Update MIDI State up to this sample offset
+            if (isMidiGateMode)
+            {
+                // Process events that happened before or at this step
+                auto it = midiEvents.begin();
+                while (it != midiEvents.end())
+                {
+                    if (it->sampleOffset <= sampleOffset)
+                    {
+                        if (it->isNoteOn) {
+                            heldMidiNotes.insert(it->noteNumber);
+                            pendingMidiTrigger = true;
+                        }
+                        else {
+                            heldMidiNotes.erase(it->noteNumber);
+                            
+                            // Kill specific sustained notes linked to this MIDI note
+                            for (auto& note : activeNotes) {
+                                if (note.isActive && note.isMidiSustain && note.sourceMidiNote == it->noteNumber) {
+                                    midiMessages.addEvent(juce::MidiMessage::noteOff(note.midiChannel, note.noteNumber), it->sampleOffset);
+                                    note.isActive = false;
+                                }
+                            }
+                        }
+                        it = midiEvents.erase(it);
+                    }
+                    else
+                    {
+                        ++it;
+                    }
+                }
+            }
+            
             // Calculate actual step duration for length logic
             double nextStepBaseTime = (k + 1) * stepDuration;
             double nextStepTime = nextStepBaseTime;
@@ -428,9 +565,17 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 if (roll >= masterProbability) probCheck = false;
             }
             
+            bool isGateOpen = !heldMidiNotes.empty();
+
             // 1. Advance Values (Advance Before Play)
             auto processValueAdvancement = [&](SequencerLane& lane) {
-                bool masterHit = lane.enableMasterSource && masterTriggers[(size_t)stepIdx] && probCheck;
+                bool masterHit = false;
+                if (isMidiGateMode) {
+                    // In MIDI Gate Mode, advance only on new MIDI trigger (Step Advance)
+                    masterHit = lane.enableMasterSource && pendingMidiTrigger && probCheck;
+                } else {
+                    masterHit = lane.enableMasterSource && masterTriggers[(size_t)stepIdx] && probCheck;
+                }
                 
                 // Use current trigger step state
                 int localStep = lane.currentTriggerStep;
@@ -477,8 +622,91 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             int l = lengthLane.values[(size_t)lengthLane.currentValueStep];
             bool isHold = (l == 9);
 
+            // Define CC Processing Helper
+            auto processCCLane = [&](SequencerLane& lane, bool onlyPGM) {
+                if (lane.midiCC == 0) return; // OFF
+                if (lane.midiCC == 130) return; // CHORD Mode (Handled in Note Logic)
+                
+                bool isPGM = (lane.midiCC == 128);
+                if (onlyPGM && !isPGM) return;
+                if (!onlyPGM && isPGM) return;
+
+                bool masterHit = lane.enableMasterSource && masterTriggers[(size_t)stepIdx] && probCheck;
+                bool localHit = lane.enableLocalSource && lane.triggers[(size_t)lane.activeTriggerStep];
+                
+                if (masterHit || localHit)
+                {
+                    int val = lane.values[(size_t)lane.currentValueStep];
+                    val = juce::jlimit(0, 127, val);
+                    
+                    lane.targetCCValue = val;
+                    
+                    if (isPGM) // PGM is never smoothed
+                    {
+                         lane.isRamping = false;
+                         lane.currentSmoothedValue = (float)val;
+                         
+                         if (val != lane.lastSentCCValue) {
+                             sendCC(lane, sampleOffset, val);
+                             lane.lastSentCCValue = val;
+                         }
+                    }
+                    else 
+                    {
+                        if (lane.smoothing == 0)
+                        {
+                            lane.isRamping = false;
+                            lane.currentSmoothedValue = (float)val;
+                            
+                            if (val != lane.lastSentCCValue) {
+                                sendCC(lane, sampleOffset, val);
+                                lane.lastSentCCValue = val;
+                            }
+                        }
+                        else
+                        {
+                            // Setup Ramp
+                            // Max duration (100) = 1/32 note
+                            // 1/32 note = samplesPerQuarterNote / 8.0
+                            double maxDur = samplesPerQuarterNote / 8.0;
+                            double dur = (lane.smoothing / 100.0) * maxDur;
+                            
+                            if (dur < 1.0) {
+                                 lane.isRamping = false;
+                                 lane.currentSmoothedValue = (float)val;
+                                 
+                                 if (val != lane.lastSentCCValue) {
+                                     sendCC(lane, sampleOffset, val);
+                                     lane.lastSentCCValue = val;
+                                 }
+                            } else {
+                                 // Only start ramp if target is different from current output
+                                 if (val != lane.lastSentCCValue) {
+                                     lane.isRamping = true;
+                                     lane.rampSamplesRemaining = (int)dur;
+                                     lane.rampIncrement = (val - lane.currentSmoothedValue) / dur;
+                                 }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Priority 1: Process PGM Changes (Before Notes)
+            processCCLane(ccLane1, true);
+            processCCLane(ccLane2, true);
+            processCCLane(ccLane3, true);
+            processCCLane(ccLane4, true);
+
             // 2. Play Note (Only if Master Trigger is active OR Hold is active)
-            if ((masterTriggers[(size_t)stepIdx] && probCheck) || (isHold && isHoldActive))
+            bool shouldTrigger = false;
+            if (isMidiGateMode) {
+                // In MIDI Mode, trigger only on new MIDI trigger (Step Advance)
+                shouldTrigger = pendingMidiTrigger && probCheck;
+            } else {
+                shouldTrigger = (masterTriggers[(size_t)stepIdx] && probCheck);
+            }
+            if (shouldTrigger || (isHold && isHoldActive))
             {
                  int n = noteLane.values[(size_t)noteLane.currentValueStep];
                  int o = octaveLane.values[(size_t)octaveLane.currentValueStep];
@@ -490,8 +718,56 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  // C-2 is MIDI 0.
                  // Formula: (Octave + 2) * 12 + Note
                  
-                 int mNote = (o + 2) * 12 + n;
+                 int mNote = (o + 2) * 12 + n + transposeOffset;
                  mNote = juce::jlimit(0, 127, mNote);
+
+                 // CHORD LOGIC
+                 std::vector<int> chordOffsets;
+                 chordOffsets.push_back(0); // Root
+                 
+                 int chordType = 0;
+                 auto checkChord = [&](SequencerLane& lane) {
+                     if (lane.midiCC == 130) {
+                         // Always read the current value for CHORD mode, regardless of trigger state
+                         int val = lane.values[(size_t)lane.currentValueStep];
+                         if (val > 0) chordType = val;
+                     }
+                 };
+                 checkChord(ccLane1); checkChord(ccLane2); checkChord(ccLane3); checkChord(ccLane4);
+                 
+                 if (chordType > 0) {
+                     switch(chordType) {
+                         // 3-Note Chords (1-12)
+                         case 1: chordOffsets = {0, 4, 7}; break; // Maj
+                         case 2: chordOffsets = {0, 3, 7}; break; // Min
+                         case 3: chordOffsets = {0, 3, 6}; break; // Dim
+                         case 4: chordOffsets = {0, 4, 8}; break; // Aug
+                         case 5: chordOffsets = {0, 2, 7}; break; // Sus2
+                         case 6: chordOffsets = {0, 5, 7}; break; // Sus4
+                         case 7: chordOffsets = {0, 7, 12}; break; // Power (Root+5+8)
+                         case 8: chordOffsets = {0, 4, 12}; break; // Maj (Open/Inv)
+                         case 9: chordOffsets = {0, 3, 12}; break; // Min (Open/Inv)
+                         case 10: chordOffsets = {0, 7, 16}; break; // Maj (Spread)
+                         case 11: chordOffsets = {0, 7, 15}; break; // Min (Spread)
+                         case 12: chordOffsets = {0, 12, 24}; break; // Octaves
+                         
+                         // 4-Note Chords (13-24)
+                         case 13: chordOffsets = {0, 4, 7, 11}; break; // Maj7
+                         case 14: chordOffsets = {0, 3, 7, 10}; break; // Min7
+                         case 15: chordOffsets = {0, 4, 7, 10}; break; // Dom7
+                         case 16: chordOffsets = {0, 3, 6, 9}; break; // Dim7
+                         case 17: chordOffsets = {0, 3, 6, 10}; break; // HalfDim7
+                         case 18: chordOffsets = {0, 3, 7, 11}; break; // MinMaj7
+                         case 19: chordOffsets = {0, 4, 7, 9}; break; // Maj6
+                         case 20: chordOffsets = {0, 3, 7, 9}; break; // Min6
+                         case 21: chordOffsets = {0, 4, 11, 14}; break; // Maj9 (No 5)
+                         case 22: chordOffsets = {0, 3, 10, 14}; break; // Min9 (No 5)
+                         case 23: chordOffsets = {0, 5, 7, 10}; break; // 7sus4
+                         case 24: chordOffsets = {0, 4, 10, 15}; break; // 7#9
+                         
+                         default: chordOffsets = {0, 4, 7}; break; // Default to Maj
+                     }
+                 }
                  
                  double dur = 0.25;
                  // bool play = true;
@@ -501,6 +777,8 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  bool isHoldStep = (l == 9);
                  bool shouldPlay = (l != 0);
                  
+                 if (isMidiGateMode && l == 0) shouldPlay = true; // Treat 0 as Sustain in MIDI Mode
+
                  if (l == 0) { /* play = false; */ }
                  else if (l == 1) dur = 0.03125;
                  else if (l == 2) dur = 0.046875;
@@ -519,25 +797,25 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  
                  // Check if we are continuing a hold chain
                  // Only extend if there is NO new trigger (Gate OFF) OR if it is an explicit HOLD step
-                 if (isHoldActive && lastTriggeredNoteIndex >= 0 && (!masterTriggers[(size_t)stepIdx] || isHoldStep))
+                 if (isHoldActive && lastTriggeredGroupID >= 0 && (!masterTriggers[(size_t)stepIdx] || isHoldStep))
                  {
-                     // Verify note is still active
-                     bool noteFound = false;
+                     // Verify at least one note in group is still active
+                     bool groupFound = false;
                      for (auto& note : activeNotes) {
-                         // We can't rely on index being stable if notes are removed, but activeNotes is a fixed array
-                         // and we only clear isActive. So index is stable.
-                         // But we should check if it's actually active.
-                         if (&note == &activeNotes[(size_t)lastTriggeredNoteIndex] && note.isActive) {
-                             noteFound = true;
+                         if (note.isActive && note.groupID == lastTriggeredGroupID) {
+                             groupFound = true;
                              break;
                          }
                      }
                      
-                     if (noteFound && shouldPlay)
+                     if (groupFound && shouldPlay)
                      {
-                         // Extend the held note
-                         auto& note = activeNotes[(size_t)lastTriggeredNoteIndex];
-                         note.noteOffPosition = time + dur;
+                         // Extend ALL notes in the group
+                         for (auto& note : activeNotes) {
+                             if (note.isActive && note.groupID == lastTriggeredGroupID) {
+                                 note.noteOffPosition = time + dur;
+                             }
+                         }
                          extended = true;
                          
                          // Update State
@@ -551,36 +829,65 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                  
                  if (!extended && shouldPlay && v > 0)
                  {
-                     // Handle overlapping notes of same pitch
-                     for (auto& note : activeNotes)
-                     {
-                         if (!note.isActive) continue;
-
-                         // Check if same pitch AND overlaps (ends at or after new note start)
-                         if (note.noteNumber == mNote && note.midiChannel == 1 && note.noteOffPosition >= time - 0.0001)
-                         {
-                             midiMessages.addEvent(juce::MidiMessage::noteOff(1, mNote), sampleOffset);
-                             note.isActive = false;
+                     currentGroupID++; // New group for this trigger
+                     lastTriggeredGroupID = currentGroupID;
+                     
+                     // Determine Source MIDI Note for Sustain
+                     int sourceMidiNote = -1;
+                     bool isSustain = false;
+                     if (isMidiGateMode && l == 0) {
+                         if (!heldMidiNotes.empty()) {
+                             isSustain = true;
+                             sourceMidiNote = *heldMidiNotes.rbegin();
+                         } else {
+                             // Gate closed before step triggered (staccato tap)
+                             // Play short note instead of sustaining
+                             isSustain = false;
+                             dur = 0.125; 
                          }
                      }
 
-                     midiMessages.addEvent(juce::MidiMessage::noteOn(1, mNote, (juce::uint8)v), sampleOffset);
-                     
-                     // Find free slot
-                     for (int i = 0; i < maxActiveNotes; ++i)
-                     {
-                         auto& note = activeNotes[(size_t)i];
-                         if (!note.isActive)
+                     for (int offset : chordOffsets) {
+                         int currentNote = juce::jlimit(0, 127, mNote + offset);
+                         
+                         // Handle overlapping notes of same pitch
+                         for (auto& note : activeNotes)
                          {
-                             note.isActive = true;
-                             note.noteNumber = mNote;
-                             note.midiChannel = 1;
-                             note.noteOffPosition = time + dur;
-                             
-                             lastTriggeredNoteIndex = i;
-                             isHoldActive = true; // Any triggered note can be held
-                             
-                             break;
+                             if (!note.isActive) continue;
+                             if (note.noteNumber == currentNote && note.midiChannel == 1 && note.noteOffPosition >= time - 0.0001)
+                             {
+                                 midiMessages.addEvent(juce::MidiMessage::noteOff(1, currentNote), sampleOffset);
+                                 note.isActive = false;
+                             }
+                         }
+
+                         midiMessages.addEvent(juce::MidiMessage::noteOn(1, currentNote, (juce::uint8)v), sampleOffset);
+                         
+                         // Find free slot
+                         for (int i = 0; i < maxActiveNotes; ++i)
+                         {
+                             auto& note = activeNotes[(size_t)i];
+                             if (!note.isActive)
+                             {
+                                 note.isActive = true;
+                                 note.noteNumber = currentNote;
+                                 note.midiChannel = 1;
+                                 note.groupID = currentGroupID;
+                                 
+                                 if (isSustain) {
+                                     note.isMidiSustain = true;
+                                     note.sourceMidiNote = sourceMidiNote;
+                                     note.noteOffPosition = time + 10000.0; // Infinite
+                                 } else {
+                                     note.isMidiSustain = false;
+                                     note.sourceMidiNote = -1;
+                                     note.noteOffPosition = time + dur;
+                                 }
+                                 
+                                 isHoldActive = true; 
+                                 
+                                 break;
+                             }
                          }
                      }
                  }
@@ -595,40 +902,11 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 isHoldActive = false;
             }
 
-            // 3. Process CC Lanes
-            auto processCCLane = [&](SequencerLane& lane) {
-                if (lane.midiCC == 0) return; // OFF
-                
-                bool masterHit = lane.enableMasterSource && masterTriggers[(size_t)stepIdx] && probCheck;
-                bool localHit = lane.enableLocalSource && lane.triggers[(size_t)lane.activeTriggerStep];
-                
-                if (masterHit || localHit)
-                {
-                    // Update UI
-                    // lane.activeValueStep = lane.currentValueStep; // Already updated at start of step
-                    
-                    int val = lane.values[(size_t)lane.currentValueStep];
-                    val = juce::jlimit(0, 127, val);
-                    
-                    if (lane.midiCC == 128) // PGM
-                    {
-                        midiMessages.addEvent(juce::MidiMessage::programChange(1, val), sampleOffset);
-                    }
-                    else if (lane.midiCC == 129) // A.TOUCH
-                    {
-                        midiMessages.addEvent(juce::MidiMessage::channelPressureChange(1, val), sampleOffset);
-                    }
-                    else if (lane.midiCC >= 1 && lane.midiCC <= 127)
-                    {
-                        midiMessages.addEvent(juce::MidiMessage::controllerEvent(1, lane.midiCC, val), sampleOffset);
-                    }
-                }
-            };
-            
-            processCCLane(ccLane1);
-            processCCLane(ccLane2);
-            processCCLane(ccLane3);
-            processCCLane(ccLane4);
+            // 3. Process CC Lanes (Priority 3: Deferred/Smoothed)
+            processCCLane(ccLane1, false);
+            processCCLane(ccLane2, false);
+            processCCLane(ccLane3, false);
+            processCCLane(ccLane4, false);
         
             // 4. Advance Triggers (Post-Processing)
             auto processTriggerAdvancement = [&](SequencerLane& lane) {
@@ -645,13 +923,47 @@ void ShequencerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             processTriggerAdvancement(ccLane2);
             processTriggerAdvancement(ccLane3);
             processTriggerAdvancement(ccLane4);
+            
+            // Reset Pending Trigger after processing step
+            if (isMidiGateMode) pendingMidiTrigger = false;
         }
     }
     
-    // Process Note Offs (Moved to end to handle new notes ending in this block)
+    // Process remaining ramps
+    int remaining = numSamples - currentSamplePos;
+    if (remaining > 0) processCCRamps(currentSamplePos, remaining);
+    
+    // Process any remaining MIDI events after the last step
+    if (isMidiGateMode)
+    {
+        auto it = midiEvents.begin();
+        while (it != midiEvents.end())
+        {
+            if (it->isNoteOn) {
+                heldMidiNotes.insert(it->noteNumber);
+                pendingMidiTrigger = true; // Persist to next block
+            }
+            else {
+                heldMidiNotes.erase(it->noteNumber);
+                
+                // Kill specific sustained notes linked to this MIDI note
+                for (auto& note : activeNotes) {
+                    if (note.isActive && note.isMidiSustain && note.sourceMidiNote == it->noteNumber) {
+                        midiMessages.addEvent(juce::MidiMessage::noteOff(note.midiChannel, note.noteNumber), it->sampleOffset);
+                        note.isActive = false;
+                    }
+                }
+            }
+            it = midiEvents.erase(it);
+        }
+    }
+    // Process Note Offs (Time-based Expiry)
     for (auto& note : activeNotes)
     {
         if (!note.isActive) continue;
+        
+        // Skip if sustained by MIDI
+        if (note.isMidiSustain) continue;
 
         if (currentPPQ >= note.noteOffPosition) // Already passed?
         {
@@ -949,6 +1261,7 @@ void ShequencerAudioProcessor::savePattern(int bank, int slot)
         dst.valueDirection = (int)src.valueDirection;
         dst.triggerDirection = (int)src.triggerDirection;
         dst.customColor = src.customColor.getARGB();
+        dst.smoothing = src.smoothing;
     };
     
     copyLane(noteLane, pat.noteLane);
@@ -1008,6 +1321,7 @@ void ShequencerAudioProcessor::applyPendingPatternLoad()
                     dst.valueDirection = (SequencerLane::Direction)src.valueDirection;
                     dst.triggerDirection = (SequencerLane::Direction)src.triggerDirection;
                     dst.customColor = juce::Colour(src.customColor);
+                    dst.smoothing = src.smoothing;
                 };
                 
                 loadLane(noteLane, pat.noteLane);
@@ -1099,6 +1413,7 @@ void ShequencerAudioProcessor::saveAllPatternsToJson(const juce::File& file)
                         lObj.getDynamicObject()->setProperty("valueDirection", ld.valueDirection);
                         lObj.getDynamicObject()->setProperty("triggerDirection", ld.triggerDirection);
                         lObj.getDynamicObject()->setProperty("customColor", (int)ld.customColor);
+                        lObj.getDynamicObject()->setProperty("smoothing", ld.smoothing);
                         
                         juce::String vStr;
                         for (int v : ld.values) vStr += juce::String(v) + ",";
@@ -1192,6 +1507,7 @@ void ShequencerAudioProcessor::loadAllPatternsFromJson(const juce::File& file)
                                     ld.valueDirection = lObj.getProperty("valueDirection", 0);
                                     ld.triggerDirection = lObj.getProperty("triggerDirection", 0);
                                     ld.customColor = (juce::uint32)(int)lObj.getProperty("customColor", 0);
+                                    ld.smoothing = lObj.getProperty("smoothing", 0);
                                     
                                     juce::String vStr = lObj.getProperty("values", "").toString();
                                     juce::StringArray toks; toks.addTokens(vStr, ",", "");
@@ -1264,7 +1580,7 @@ void ShequencerAudioProcessor::setLaneValueIndex(SequencerLane& lane, int target
     lane.currentValueStep = targetIndex;
     lane.activeValueStep = targetIndex;
     lane.valueMovingForward = true;
-    lane.forceNextStep = false;
+    lane.forceNextStep = true;
 }
 
 void ShequencerAudioProcessor::resetLane(SequencerLane& lane, int defaultValue)

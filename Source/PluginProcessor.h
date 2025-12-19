@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
+#include <set>
 
 struct SequencerLane
 {
@@ -43,6 +44,17 @@ struct SequencerLane
     
     // MIDI CC (0 = Off, 1-127 = CC Number)
     int midiCC = 0;
+
+    // Smoothing (0-100)
+    int smoothing = 0;
+    
+    // Runtime State for Smoothing
+    float currentSmoothedValue = 0.0f;
+    int targetCCValue = 0;
+    bool isRamping = false;
+    double rampIncrement = 0.0;
+    int rampSamplesRemaining = 0;
+    int lastSentCCValue = -1;
 
     // Custom Color (If transparent, use default)
     juce::Colour customColor = juce::Colours::transparentBlack;
@@ -230,6 +242,7 @@ struct PatternData
         int valueDirection = 0; // Stored as int
         int triggerDirection = 0;
         int midiCC = 0;
+        int smoothing = 0;
         juce::uint32 customColor = 0; // 0 = Transparent/Default
     };
     
@@ -350,6 +363,14 @@ public:
     bool isPlaying = false;
     bool waitingForBarSync = false;
 
+    // Transposition
+    int transposeOffset = 0;
+    
+    // Gate Mode
+    bool isMidiGateMode = false;
+    std::set<int> heldMidiNotes;
+    bool pendingMidiTrigger = false;
+
     // Note Off Management
     struct ActiveNote
     {
@@ -357,9 +378,17 @@ public:
         int noteNumber = 0;
         int midiChannel = 1;
         double noteOffPosition = 0.0; // In quarter notes
+        int groupID = -1; // For polyphonic hold
+        
+        // MIDI Gate Sustain
+        bool isMidiSustain = false;
+        int sourceMidiNote = -1;
     };
     static constexpr int maxActiveNotes = 64;
     std::array<ActiveNote, maxActiveNotes> activeNotes;
+    
+    int currentGroupID = 0;
+    int lastTriggeredGroupID = -1;
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ShequencerAudioProcessor)

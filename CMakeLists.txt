@@ -15,7 +15,7 @@ juce_add_plugin(shequencer
     PLUGIN_MANUFACTURER_CODE TOOL
     PLUGIN_CODE SHEQ
     FORMATS AU VST3 Standalone
-    PRODUCT_NAME "toolBoy Sh-equencer v1")
+    PRODUCT_NAME "toolBoy SH-equencer v1")
 
 target_sources(shequencer
     PRIVATE

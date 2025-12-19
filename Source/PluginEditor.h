@@ -19,7 +19,7 @@ namespace Theme
     static juce::Font getValueFont() { return juce::FontOptions("Arial", 50.0f, juce::Font::bold); }
 }
 
-class ColorPickerClient : public juce::Component, public juce::GlobalMouseListener
+class ColorPickerClient : public juce::Component
 {
 public:
     ColorPickerClient(juce::Colour& target, juce::Colour initialColor, std::function<void()> callback)
@@ -39,32 +39,20 @@ public:
         }
         
         setSize(90, 120);
-        addToDesktop(juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowHasDropShadow);
-        setVisible(true);
-        toFront(true);
-        juce::Desktop::getInstance().addGlobalMouseListener(this);
     }
     
     ~ColorPickerClient() override
     {
-        juce::Desktop::getInstance().removeGlobalMouseListener(this);
     }
     
     void mouseDown(const juce::MouseEvent& e) override
     {
-        if (e.originalComponent != this && !isParentOf(e.originalComponent))
-        {
-            // Clicked outside
-            juce::MessageManager::callAsync([this]() { delete this; });
-            return;
-        }
         handleMouse(e);
     }
     
     void mouseDrag(const juce::MouseEvent& e) override
     {
-        if (e.originalComponent == this)
-            handleMouse(e);
+        handleMouse(e);
     }
     
     void handleMouse(const juce::MouseEvent& e)
@@ -155,8 +143,8 @@ public:
 class LaneComponent : public juce::Component
 {
 public:
-    LaneComponent(SequencerLane& lane, juce::String name, juce::Colour color, int minV, int maxV, int maxRR)
-        : laneData(lane), laneName(name), laneColor(color), minVal(minV), maxVal(maxV), maxRandomRange(maxRR)
+    LaneComponent(SequencerLane& lane, juce::String name, juce::Colour color, int minV, int maxV, int maxRR, bool showSmooth = false)
+        : laneData(lane), laneName(name), laneColor(color), minVal(minV), maxVal(maxV), maxRandomRange(maxRR), showSmoothing(showSmooth)
     {
         setOpaque(true);
     }
@@ -167,6 +155,7 @@ public:
     std::function<void(bool)> onLabelClicked; // bool isShift
     
     void setLaneName(juce::String newName) { laneName = newName; repaint(); }
+    void setRange(int min, int max) { minVal = min; maxVal = max; repaint(); }
     
     juce::Colour getEffectiveColor() const {
         return laneData.customColor.isTransparent() ? laneColor : laneData.customColor;
@@ -194,22 +183,21 @@ public:
         int barTopY = 0;
         
         // Left Controls (Toggles)
-        area.removeFromLeft(60);
+        area.removeFromLeft(70); // 20px Col 1 + 50px Col 2
         
-        // Draw Toggles
-        // L aligned with step sequencer buttons (bottom)
-        // Width reduced to 2/3 (40px), centered in 60px area (x offset 10)
-        juce::Rectangle<int> localToggle(10, h - triggerHeight, 40, triggerHeight);
+        // Draw Toggles (Col 2: 20-70)
+        // Center at 20 + 25 = 45. Width 40. x = 45 - 20 = 25.
+        juce::Rectangle<int> localToggle(25, h - triggerHeight, 40, triggerHeight);
         localToggle = localToggle.reduced(2);
         
-        // M same size, aligned with Y of bar-sequencers (upper border)
-        juce::Rectangle<int> masterToggle(10, barTopY, 40, triggerHeight);
+        // M same size
+        juce::Rectangle<int> masterToggle(25, barTopY, 40, triggerHeight);
         masterToggle = masterToggle.reduced(2);
         
         // Draw Reset Button (Between M and L)
         int btnH = 70;
         int btnW = 36;
-        int btnX = 12;
+        int btnX = 27; // Centered in 50px (25+2)
         int btnY = (h - btnH) / 2;
         
         juce::Rectangle<int> resetBtnRect(btnX, btnY, btnW, btnH);
@@ -217,9 +205,10 @@ public:
         g.setColour(getEffectiveColor());
         g.fillRect(resetBtnRect);
         
-        // Color Picker Dot (Right of Reset Button)
+        // Color Picker Dot (Col 1: 0-20)
+        // Center at 10. Size 10. x = 10 - 5 = 5.
         int dotSize = 10;
-        int dotX = btnX + btnW + 2; // 12 + 36 + 2 = 50
+        int dotX = 5;
         int dotY = btnY + (btnH - dotSize) / 2;
         
         g.setColour(getEffectiveColor());
@@ -234,6 +223,7 @@ public:
         else if (laneName == "VEL") labelText = "VE\nLO\nCI\nTY";
         else if (laneName == "LEN") labelText = "LE\nNG\nTH";
         else if (laneName == "PRESSURE") labelText = "PR\nES\nSU\nRE";
+        else if (laneName == "CHORD") labelText = "CH\nOR\nDS";
         else if (laneName.startsWith("CC ")) labelText = laneName.replace(" ", "\n");
         
         g.drawFittedText(labelText, resetBtnRect, juce::Justification::centred, 3);
@@ -256,21 +246,15 @@ public:
         g.setColour(getEffectiveColor().withAlpha(laneData.enableLocalSource ? 1.0f : 0.33f));
         g.fillRect(localToggle.reduced(1));
 
-        // Right Controls (Loop Lengths)
-        // Align with Left Controls (M/L)
-        // V aligned with M (top)
-        // T aligned with L (bottom)
-        // Width 40px, centered in right margin (assuming right margin is 40px, so x = width - 40)
-        // Actually, let's center it in the 40px area.
+        // Right Controls (Col 4)
+        // Col 5 is 30px margin on right.
+        // Col 4 is 100px before that.
+        // Start X = Width - 130.
+        // Controls are 80px wide, centered in 100px (offset 10px).
         
-        // New Layout: 120px margin
-        // Col A (Width-120 to Width-80): Length (40px)
-        // Col B (Width-80 to Width-40): Shift L (20px) + Shift R (20px)
-        // Col C (Width-40 to Width): (Unused/Margin)
-        
-        int rightMarginX = getWidth() - 120;
-        int col1_X = rightMarginX;
-        int col2_X = rightMarginX + 40;
+        int rightMarginX = getWidth() - 130;
+        int col1_X = rightMarginX + 10;
+        int col2_X = col1_X + 40;
         
         // Vertical Layout:
         // Row 0: Value Length | Value Shift L | Value Shift R
@@ -490,8 +474,42 @@ public:
         juce::String rangeText = (laneData.randomRange == 0) ? "FULL" : ("+/-" + juce::String(laneData.randomRange));
         g.drawText(rangeText, randomRangeRect, juce::Justification::centred);
 
+        // Draw Smoothing Slider (Col 5)
+        bool isCC = (laneData.midiCC >= 1 && laneData.midiCC <= 127);
+        bool isPressure = (laneData.midiCC == 129);
+        
+        if (showSmoothing && (isCC || isPressure))
+        {
+            int col5_X = getWidth() - 30;
+            int sliderW = 12;
+            int sliderH = 78;
+            int sliderX = col5_X + (30 - sliderW) / 2;
+            int sliderY = (getHeight() - sliderH) / 2;
+            
+            juce::Rectangle<int> smoothRect(sliderX, sliderY, sliderW, sliderH);
+            
+            // Draw Border (Colored)
+            g.setColour(getEffectiveColor());
+            g.fillRect(smoothRect);
+            
+            // Draw Inner Black
+            g.setColour(juce::Colours::black);
+            g.fillRect(smoothRect.reduced(1));
+            
+            // Fill from bottom
+            if (laneData.smoothing > 0)
+            {
+                float norm = (float)laneData.smoothing / 100.0f;
+                int fillH = (int)(smoothRect.getHeight() * norm);
+                int fillY = smoothRect.getBottom() - fillH;
+                
+                g.setColour(getEffectiveColor());
+                g.fillRect(smoothRect.getX(), fillY, smoothRect.getWidth(), fillH);
+            }
+        }
+
         // Draw Steps
-        area.removeFromRight(130);
+        area.removeFromRight(130); // Col 4 (100) + Col 5 (30)
         float stepWidth = area.getWidth() / 16.0f;
         
         // Save area for overlay
@@ -559,8 +577,8 @@ public:
         if (valueDisplayAlpha > 0.0f)
         {
             // Position inside the visual bar area
-            // x = 60 (start of steps), y = barTopY, w = stepsArea.getWidth(), h = reducedBarHeight
-            juce::Rectangle<int> overlayRect(60, barTopY, stepsArea.getWidth(), reducedBarHeight);
+            // x = 70 (start of steps), y = barTopY, w = stepsArea.getWidth(), h = reducedBarHeight
+            juce::Rectangle<int> overlayRect(70, barTopY, stepsArea.getWidth(), reducedBarHeight);
             
             g.setFont(Theme::getValueFont());
             
@@ -577,16 +595,34 @@ public:
     void mouseDown(const juce::MouseEvent& e) override
     {
         auto area = getLocalBounds();
-        area.removeFromLeft(60);
+        area.removeFromLeft(70);
         area.removeFromRight(130);
         
         // Handle Left Toggles
-        if (e.x < 60)
+        if (e.x < 70)
         {
             int triggerHeight = 24;
             int h = getHeight();
             int barTopY = 0;
             
+            // Check Color Picker Dot (First 20px)
+            if (e.x < 20)
+            {
+                // Full height hit area
+                if (e.mods.isShiftDown())
+                {
+                    laneData.customColor = juce::Colours::transparentBlack;
+                    repaint();
+                }
+                else
+                {
+                    auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
+                    juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().removeFromLeft(20), nullptr);
+                }
+                return;
+            }
+            
+            // Controls Area (20-70)
             if (e.y >= h - triggerHeight)
             {
                 laneData.enableLocalSource = !laneData.enableLocalSource;
@@ -604,29 +640,7 @@ public:
                 {
                     // Check if clicking the label area
                     int btnH = 70;
-                    int btnW = 36;
-                    int btnX = 12;
                     int btnY = (h - btnH) / 2;
-                    
-                    // Color Picker Dot (Right of Reset Button)
-                    int dotSize = 10;
-                    int dotX = btnX + btnW + 2; // 50
-                    int dotY = btnY + (btnH - dotSize) / 2;
-                    
-                    if (e.x >= dotX && e.x < dotX + dotSize && e.y >= dotY && e.y < dotY + dotSize)
-                    {
-                        if (e.mods.isShiftDown())
-                        {
-                            laneData.customColor = juce::Colours::transparentBlack;
-                            repaint();
-                        }
-                        else
-                        {
-                            auto* client = new ColorPickerClient(laneData.customColor, getEffectiveColor(), [this](){ repaint(); });
-                            client->setTopLeftPosition(e.getScreenPosition());
-                        }
-                        return;
-                    }
                     
                     if (e.y >= btnY && e.y < btnY + btnH)
                     {
@@ -643,15 +657,25 @@ public:
         }
         
         // Handle Right Controls
-        if (e.x > getWidth() - 120)
+        if (e.x > getWidth() - 130)
         {
+            // Handle Smoothing Slider (Col 5)
+            if (showSmoothing && e.x >= getWidth() - 30)
+            {
+                isDraggingSmoothing = true;
+                updateSmoothing(e.y);
+                return;
+            }
+            
+            if (e.x >= getWidth() - 30) return; // Ignore other clicks in Col 5 if not smoothing
+
             // int triggerHeight = 24;
             // int h = getHeight();
             // int barTopY = 0;
             
-            int rightMarginX = getWidth() - 120;
-            int col1_X = rightMarginX;
-            int col2_X = rightMarginX + 40;
+            int rightMarginX = getWidth() - 130;
+            int col1_X = rightMarginX + 10;
+            int col2_X = col1_X + 40;
             
             // Layout Constants
             int ctrlH = 24;
@@ -763,22 +787,11 @@ public:
                 return;
             }
             
-            // Reset Button - Removed
-            /*
-            int midY = h / 2;
-            int resetX = col2_X + 55;
-            int resetY = midY;
-            if (std::abs(e.x - resetX) < 10 && std::abs(e.y - resetY) < 10)
-            {
-                if (onResetClicked) onResetClicked(e.mods.isAltDown());
-                repaint();
-            }
-            */
             return;
         }
         
         float stepWidth = area.getWidth() / 16.0f;
-        int stepIdx = (int)((e.x - 60) / stepWidth);
+        int stepIdx = (int)((e.x - 70) / stepWidth);
         
         if (stepIdx >= 0 && stepIdx < 16 && e.x <= getWidth() - 130)
         {
@@ -836,6 +849,12 @@ public:
     
     void mouseDrag(const juce::MouseEvent& e) override
     {
+        if (isDraggingSmoothing)
+        {
+            updateSmoothing(e.y);
+            return;
+        }
+
         // Helper for Interval Steps
         auto getNextInterval = [](int current, int delta, bool isShift) -> int {
             if (isShift) {
@@ -969,13 +988,13 @@ public:
         if (e.mods.isShiftDown()) return;
 
         // Only drag values/triggers in the main area
-        if (e.x >= 60 && e.x <= getWidth() - 130)
+        if (e.x >= 70 && e.x <= getWidth() - 130)
         {
             auto area = getLocalBounds();
-            area.removeFromLeft(60);
+            area.removeFromLeft(70);
             area.removeFromRight(130);
             float stepWidth = area.getWidth() / 16.0f;
-            int stepIdx = (int)((e.x - 60) / stepWidth);
+            int stepIdx = (int)((e.x - 70) / stepWidth);
             
             if (isDraggingTrigger)
             {
@@ -1094,11 +1113,12 @@ public:
         isDraggingValueDirection = false;
         isDraggingTriggerDirection = false;
         isDraggingRandomRange = false;
+        isDraggingSmoothing = false;
     }
 
     void mouseMove(const juce::MouseEvent& e) override
     {
-        int col1_X = getWidth() - 120;
+        int col1_X = getWidth() - 130 + 10;
         int ctrlH = 24;
         int gap = 1;
         juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
@@ -1117,7 +1137,7 @@ public:
         if (isHoveringRandom)
         {
             isHoveringRandom = false;
-            int col1_X = getWidth() - 120;
+            int col1_X = getWidth() - 130 + 10;
             int ctrlH = 24;
             int gap = 1;
             juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
@@ -1130,7 +1150,7 @@ public:
     {
         if (isHoveringRandom)
         {
-            int col1_X = getWidth() - 120;
+            int col1_X = getWidth() - 130 + 10;
             int ctrlH = 24;
             int gap = 1;
             juce::Rectangle<int> randomRect(col1_X, (ctrlH + gap) * 2 + 3, 40, ctrlH);
@@ -1146,6 +1166,8 @@ private:
     int minVal;
     int maxVal;
     int maxRandomRange;
+    bool showSmoothing = false;
+    bool isDraggingSmoothing = false;
     
     juce::String lastEditedValue;
     float valueDisplayAlpha = 0.0f;
@@ -1166,6 +1188,18 @@ private:
     int lastDragValue = 0;
     
     bool isHoveringRandom = false;
+    
+    void updateSmoothing(int y)
+    {
+        int sliderH = 78;
+        int topY = (getHeight() - sliderH) / 2;
+        int yRel = y - topY;
+        
+        float norm = 1.0f - ((float)yRel / (float)sliderH);
+        norm = juce::jlimit(0.0f, 1.0f, norm);
+        laneData.smoothing = (int)(norm * 100.0f);
+        repaint();
+    }
     
     juce::String getDirectionString(SequencerLane::Direction dir)
     {
@@ -1256,7 +1290,7 @@ public:
         
         g.setFont(juce::FontOptions("Arial", 9.0f, juce::Font::bold));
         
-        juce::String buildStr = juce::String::formatted("build\n1.%03d", BUILD_NUMBER);
+        juce::String buildStr = juce::String::formatted("build v1\n0.%03d", BUILD_NUMBER);
         g.drawFittedText(buildStr, area, juce::Justification::centred, 2);
     }
 };
@@ -1359,13 +1393,13 @@ public:
         g.fillAll(juce::Colours::black);
 
         auto area = getLocalBounds();
-        area.removeFromLeft(60); // Margin
+        area.removeFromLeft(70); // Margin (20 dots + 50 controls)
         area.removeFromRight(130); // Match LaneComponent layout
         
         // Draw GATE Reset Button
         int btnH = 60;
-        int btnW = 36;
-        int btnX = 12;
+        int btnW = 40;
+        int btnX = 25; // Centered in 50px (20+5)
         int btnY = (getHeight() - btnH) / 2;
         
         // Ensure it fits if component is small
@@ -1378,11 +1412,15 @@ public:
         
         g.setColour(juce::Colours::black);
         g.setFont(juce::FontOptions("Arial", 16.0f, juce::Font::bold));
-        g.drawFittedText("GA\nTE", resetBtnRect, juce::Justification::centred, 2);
+        
+        if (processor.isMidiGateMode)
+            g.drawFittedText("MI\nDI", resetBtnRect, juce::Justification::centred, 2);
+        else
+            g.drawFittedText("GA\nTE", resetBtnRect, juce::Justification::centred, 2);
         
         // Draw Length Control (Col A)
-        int rightMarginX = getWidth() - 120;
-        int col1_X = rightMarginX;
+        int rightMarginX = getWidth() - 130;
+        int col1_X = rightMarginX + 10;
         
         // Top Row: Shift L | Length | Shift R
         int topRowH = 24;
@@ -1437,9 +1475,9 @@ public:
         drawTriangle(shiftL, true);
         drawTriangle(shiftR, false);
         
-        // Color Picker Dot (Right of GATE Button)
+        // Color Picker Dot (Centered in first 20px)
         int dotSize = 10;
-        int dotX = btnX + btnW + 2; // 50
+        int dotX = 5;
         int dotY = btnY + (btnH - dotSize) / 2;
         
         g.setColour(getEffectiveColor());
@@ -1513,24 +1551,15 @@ public:
     void mouseDown(const juce::MouseEvent& e) override
     {
         auto area = getLocalBounds();
-        area.removeFromLeft(60);
+        area.removeFromLeft(70);
         
         // Handle GATE Reset Button (Left Area)
-        if (e.x < 60)
+        if (e.x < 70)
         {
-            // Check Color Picker Dot
-            int btnH = 60;
-            int btnW = 36;
-            int btnX = 12;
-            int btnY = (getHeight() - btnH) / 2;
-            if (btnY < 0) { btnY = 0; btnH = getHeight(); }
-            
-            int dotSize = 10;
-            int dotX = btnX + btnW + 2; // 50
-            int dotY = btnY + (btnH - dotSize) / 2;
-            
-            if (e.x >= dotX && e.x < dotX + dotSize && e.y >= dotY && e.y < dotY + dotSize)
+            // Check Color Picker Dot (First 20px)
+            if (e.x < 20)
             {
+                // Full height hit area
                 if (e.mods.isShiftDown())
                 {
                     processor.masterColor = juce::Colours::transparentBlack;
@@ -1539,7 +1568,7 @@ public:
                 else
                 {
                     auto* client = new ColorPickerClient(processor.masterColor, getEffectiveColor(), [this](){ repaint(); });
-                    client->setTopLeftPosition(e.getScreenPosition());
+                    juce::CallOutBox::launchAsynchronously(std::unique_ptr<juce::Component>(client), getScreenBounds().removeFromLeft(20), nullptr);
                 }
                 return;
             }
@@ -1548,17 +1577,26 @@ public:
             {
                 processor.resetAllLanes();
             }
+            else if (e.mods.isCommandDown())
+            {
+                processor.isMidiGateMode = !processor.isMidiGateMode;
+            }
             else
             {
-                processor.masterTriggers.fill(false);
-                processor.masterLength = 16;
+                // If clicking the button area (25-65)
+                if (e.x >= 25 && e.x <= 65) {
+                    processor.isMidiGateMode = !processor.isMidiGateMode;
+                } else {
+                    processor.masterTriggers.fill(false);
+                    processor.masterLength = 16;
+                }
             }
             repaint();
             return;
         }
         
-        int rightMarginX = getWidth() - 120;
-        int col1_X = rightMarginX;
+        int rightMarginX = getWidth() - 130;
+        int col1_X = rightMarginX + 10;
         
         int topRowH = 24;
         int topRowY = 5;
@@ -1601,9 +1639,9 @@ public:
         area.removeFromRight(130); // Match LaneComponent layout
         
         float stepWidth = area.getWidth() / 16.0f;
-        int stepIdx = (int)((e.x - 60) / stepWidth);
+        int stepIdx = (int)((e.x - 70) / stepWidth);
         
-        if (stepIdx >= 0 && stepIdx < 16)
+        if (stepIdx >= 0 && stepIdx < 16 && e.x <= getWidth() - 130)
         {
             if (e.mods.isShiftDown())
             {
@@ -1653,21 +1691,21 @@ public:
         
         if (isDraggingProbability)
         {
-            int rightMarginX = getWidth() - 120;
-            int col1_X = rightMarginX;
+            int rightMarginX = getWidth() - 130;
+            int col1_X = rightMarginX + 10;
             updateProbability(e.x, col1_X, 80);
             return;
         }
 
         // if (e.mods.isShiftDown()) return; // Allow shift-drag
 
-        if (e.x >= 60 && e.x <= getWidth() - 130)
+        if (e.x >= 70 && e.x <= getWidth() - 130)
         {
             auto area = getLocalBounds();
-            area.removeFromLeft(60);
+            area.removeFromLeft(70);
             area.removeFromRight(130);
             float stepWidth = area.getWidth() / 16.0f;
-            int stepIdx = (int)((e.x - 60) / stepWidth);
+            int stepIdx = (int)((e.x - 70) / stepWidth);
             
             if (stepIdx >= 0 && stepIdx < 16 && stepIdx != lastEditedStep)
             {
@@ -1791,17 +1829,21 @@ public:
         
         for (size_t i = 0; i < 16; ++i)
         {
-            auto slotRect = area.removeFromLeft((int)stepWidth).reduced(2);
+            auto slotRect = area.removeFromLeft((int)stepWidth);
+            
+            // Make Square
+            int size = juce::jmin(slotRect.getWidth(), slotRect.getHeight());
+            auto square = slotRect.withSizeKeepingCentre(size, size).reduced(2);
             
             bool hasPattern = !processor.patternBanks[(size_t)processor.currentBank][i].isEmpty;
             
             g.setColour(Theme::slotsColor);
-            g.fillRect(slotRect);
+            g.fillRect(square);
             
             if (!hasPattern)
             {
                 g.setColour(juce::Colours::black);
-                g.fillRect(slotRect.reduced(1));
+                g.fillRect(square.reduced(1));
             }
             
             // Draw Loaded Indicator
@@ -1810,8 +1852,8 @@ public:
                 int globalSlotNum = (processor.currentBank * 16) + (int)i + 1;
                 
                 g.setColour(juce::Colours::black);
-                g.setFont(juce::FontOptions("Arial", (float)slotRect.getHeight() * 0.8f, juce::Font::bold));
-                g.drawText(juce::String(globalSlotNum), slotRect, juce::Justification::centred);
+                g.setFont(juce::FontOptions("Arial", (float)square.getHeight() * 0.8f, juce::Font::bold));
+                g.drawText(juce::String(globalSlotNum), square, juce::Justification::centred);
             }
         }
     }

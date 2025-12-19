@@ -123,8 +123,42 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     
     // Initialize CC Lanes
     auto setupCCLane = [&](std::unique_ptr<LaneComponent>& comp, SequencerLane& lane, juce::String name) {
-        comp = std::make_unique<LaneComponent>(lane, name, Theme::controllerColor, 0, 127, 63);
-        comp->valueFormatter = [](int val) { return juce::String(val); };
+        comp = std::make_unique<LaneComponent>(lane, name, Theme::controllerColor, 0, 127, 63, true);
+        comp->valueFormatter = [&lane](int val) -> juce::String {
+            if (lane.midiCC == 130) {
+                switch(val) {
+                    case 0: return "OFF";
+                    // 3-Note Chords (1-12)
+                    case 1: return "Maj";
+                    case 2: return "Min";
+                    case 3: return "Dim";
+                    case 4: return "Aug";
+                    case 5: return "Sus2";
+                    case 6: return "Sus4";
+                    case 7: return "Pow";
+                    case 8: return "Maj/1";
+                    case 9: return "Min/1";
+                    case 10: return "Maj/2";
+                    case 11: return "Min/2";
+                    case 12: return "Oct";
+                    // 4-Note Chords (13-24)
+                    case 13: return "Maj7";
+                    case 14: return "Min7";
+                    case 15: return "Dom7";
+                    case 16: return "Dim7";
+                    case 17: return "hDim7";
+                    case 18: return "mM7";
+                    case 19: return "Maj6";
+                    case 20: return "Min6";
+                    case 21: return "Maj9";
+                    case 22: return "Min9";
+                    case 23: return "7sus";
+                    case 24: return "7#9";
+                    default: return juce::String(val);
+                }
+            }
+            return juce::String(val);
+        };
         comp->onStepShiftClicked = [&](int step, bool isTriggerRow) {
             if (isTriggerRow) p.setLaneTriggerIndex(lane, step);
             else p.setLaneValueIndex(lane, step);
@@ -142,21 +176,24 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
                 m.addItem(1, "OFF", true, lane.midiCC == 0);
                 m.addItem(2, "PGM", true, lane.midiCC == 128);
                 m.addItem(3, "PRESSURE", true, lane.midiCC == 129);
+                m.addItem(4, "CHORDS", true, lane.midiCC == 130);
                 for(int i=1; i<=127; ++i)
-                    m.addItem(i+3, "CC " + juce::String(i), true, lane.midiCC == i);
+                    m.addItem(i+4, "CC " + juce::String(i), true, lane.midiCC == i);
                 
                 m.showMenuAsync(juce::PopupMenu::Options(), [&lane, &comp](int result) {
                     if (result == 1) lane.midiCC = 0;
                     else if (result == 2) lane.midiCC = 128;
                     else if (result == 3) lane.midiCC = 129;
-                    else if (result > 3) lane.midiCC = result - 3;
+                    else if (result == 4) lane.midiCC = 130;
+                    else if (result > 4) lane.midiCC = result - 4;
                     
                     if (result > 0) {
                         juce::String newName;
-                        if (lane.midiCC == 0) newName = "OFF";
-                        else if (lane.midiCC == 128) newName = "PGM";
-                        else if (lane.midiCC == 129) newName = "PRESSURE";
-                        else newName = "CC " + juce::String(lane.midiCC);
+                        if (lane.midiCC == 0) { newName = "OFF"; comp->setRange(0, 127); }
+                        else if (lane.midiCC == 128) { newName = "PGM"; comp->setRange(0, 127); }
+                        else if (lane.midiCC == 129) { newName = "PRESSURE"; comp->setRange(0, 127); }
+                        else if (lane.midiCC == 130) { newName = "CHORD"; comp->setRange(0, 24); }
+                        else { newName = "CC " + juce::String(lane.midiCC); comp->setRange(0, 127); }
                         
                         comp->setLaneName(newName);
                     }
@@ -166,10 +203,11 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
         
         // Set initial name
         juce::String initialName;
-        if (lane.midiCC == 0) initialName = "OFF";
-        else if (lane.midiCC == 128) initialName = "PGM";
-        else if (lane.midiCC == 129) initialName = "PRESSURE";
-        else initialName = "CC " + juce::String(lane.midiCC);
+        if (lane.midiCC == 0) { initialName = "OFF"; comp->setRange(0, 127); }
+        else if (lane.midiCC == 128) { initialName = "PGM"; comp->setRange(0, 127); }
+        else if (lane.midiCC == 129) { initialName = "PRESSURE"; comp->setRange(0, 127); }
+        else if (lane.midiCC == 130) { initialName = "CHORD"; comp->setRange(0, 24); }
+        else { initialName = "CC " + juce::String(lane.midiCC); comp->setRange(0, 127); }
         
         comp->setLaneName(initialName);
         
@@ -196,10 +234,10 @@ ShequencerAudioProcessorEditor::ShequencerAudioProcessorEditor (ShequencerAudioP
     updatePageVisibility();
 
     setResizable(true, true);
-    setResizeLimits(420, 340, 1680, 1360);
-    getConstrainer()->setFixedAspectRatio(840.0 / 680.0);
+    setResizeLimits(382, 340, 1528, 1360);
+    getConstrainer()->setFixedAspectRatio(764.0 / 680.0);
 
-    setSize (840, 680);
+    setSize (764, 680);
 }
 
 ShequencerAudioProcessorEditor::~ShequencerAudioProcessorEditor()
@@ -230,29 +268,28 @@ void ShequencerAudioProcessorEditor::updatePageVisibility()
 
 void ShequencerAudioProcessorEditor::resized()
 {
-    float scale = (float)getWidth() / 840.0f;
+    float scale = (float)getWidth() / 764.0f;
     mainContainer.setTransform(juce::AffineTransform::scale(scale));
-    mainContainer.setBounds(0, 0, 840, 680);
+    mainContainer.setBounds(0, 0, 764, 680);
 
     auto area = mainContainer.getLocalBounds().reduced(10);
     
     // Master Trigger Row (Increased height)
     auto topRow = area.removeFromTop(48);
     
-    // Page Selector Position
-    // Y-centered between Octave (Lane 2) and Velocity (Lane 3)
-    // Top of lanes = 10 + 48 + 12 = 70
-    // Lane 1 Bottom = 70 + 130 = 200
-    // Lane 2 Bottom = 200 + 10 + 130 = 340
-    // Gap Center = 340 + 5 = 345
+    // Page Selector Position (Centered in 5th Column)
+    // 5th Column is the last 30px of the area width
+    int col5_Width = 30;
+    int pageBtnSize = 24; // Reduced slightly to fit 30px
     
-    int pageBtnSize = 30;
+    // Vertical Center:
+    // Top of lanes = 10 + 48 + 12 = 70
+    // Total height of 4 lanes + 3 gaps = 4 * 130 + 3 * 10 = 550
+    // Center Y = 70 + 550 / 2 = 345
     int pageBtnY = 345 - (pageBtnSize / 2);
     
-    // X + 5 relative to previous position (which was centered in rightmost 40px)
-    // Previous X = 795. New X = 800.
-    int rightEdge = area.getX() + area.getWidth(); // 830
-    int pageBtnX = rightEdge - 40 + (40 - pageBtnSize) / 2 + 5;
+    // Horizontal Center in last 30px
+    int pageBtnX = area.getRight() - col5_Width + (col5_Width - pageBtnSize) / 2;
     
     pageSelectorComp.setBounds(pageBtnX, pageBtnY, pageBtnSize, pageBtnSize);
     pageSelectorComp.toFront(false);
@@ -297,22 +334,31 @@ void ShequencerAudioProcessorEditor::resized()
     
     auto patternRow = area.removeFromTop(40);
     
-    // Left: Bank Selector (40px) + Gap (20px)
-    auto leftArea = patternRow.removeFromLeft(60);
-    bankSelectorComp.setBounds(leftArea.withSizeKeepingCentre(40, 40));
+    // Left Margin: 70px (20px Col 1 + 50px Col 2)
+    auto leftMargin = patternRow.removeFromLeft(70);
+    // Col 1 (0-20): Empty
+    leftMargin.removeFromLeft(20);
+    // Col 2 (20-70): Bank Selector
+    // Center 40px wide component in 50px space
+    bankSelectorComp.setBounds(leftMargin.getX() + 5, leftMargin.getY(), 40, 40);
     
-    // Right: Shuffle (Aligned with Loop Lengths) and FileOps (Aligned with Shift Buttons)
+    // Right Margin: 130px (100px Col 4 + 30px Col 5)
+    auto rightMargin = patternRow.removeFromRight(130);
+    // Col 5 (Last 30px)
+    auto col5 = rightMargin.removeFromRight(30);
     
-    auto rightArea = patternRow.removeFromRight(130);
+    // Col 4 (Remaining 100px): Controls
+    // Controls width is 80px total. Center in 100px (offset 10px).
+    int controlsX = rightMargin.getX() + 10;
     
-    // Shuffle at Col 2 (50 relative to rightArea)
-    shuffleComp.setBounds(rightArea.getX() + 10 + 40, rightArea.getY() + 8, 40, 24);
+    // FileOps (40px)
+    fileOpsComp.setBounds(controlsX, rightMargin.getY() + 8, 40, 24);
     
-    // FileOps at Col 1 (10 relative to rightArea)
-    fileOpsComp.setBounds(rightArea.getX() + 10, rightArea.getY() + 8, 40, 24);
+    // Shuffle (40px)
+    shuffleComp.setBounds(controlsX + 40, rightMargin.getY() + 8, 40, 24);
     
-    // Build Number at Col 3 (90 relative to rightArea)
-    buildNumberComp.setBounds(rightArea.getX() + 10 + 80, rightArea.getY() + 8, 40, 24);
+    // Build Number (25px) - Centered in Col 5
+    buildNumberComp.setBounds(col5.getX() + 2, rightMargin.getY() + 8, 25, 24);
     
     // Middle: Slots
     patternSlotsComp.setBounds(patternRow);
