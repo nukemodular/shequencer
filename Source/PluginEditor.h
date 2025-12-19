@@ -19,29 +19,65 @@ namespace Theme
     static juce::Font getValueFont() { return juce::FontOptions("Arial", 50.0f, juce::Font::bold); }
 }
 
-class ColorPickerClient : public juce::Component, public juce::ChangeListener
+class ColorPickerClient : public juce::Component
 {
 public:
     ColorPickerClient(juce::Colour& target, juce::Colour initialColor, std::function<void()> callback)
         : targetColor(target), onUpdate(callback)
     {
-        selector.setCurrentColour(initialColor);
-        selector.addChangeListener(this);
-        addAndMakeVisible(selector);
-        setSize(200, 200);
+        currentHue = target.isTransparent() ? initialColor.getHue() : target.getHue();
+        setSize(30, 120);
     }
     
-    void resized() override { selector.setBounds(getLocalBounds()); }
-    
-    void changeListenerCallback(juce::ChangeBroadcaster* /*source*/) override
+    void paint(juce::Graphics& g) override
     {
-        targetColor = selector.getCurrentColour();
-        if (onUpdate) onUpdate();
+        juce::ColourGradient gradient;
+        gradient.point1 = { 0.0f, 0.0f };
+        gradient.point2 = { 0.0f, (float)getHeight() };
+        
+        gradient.addColour(0.0f, juce::Colours::red);
+        gradient.addColour(1.0f/6.0f, juce::Colours::yellow);
+        gradient.addColour(2.0f/6.0f, juce::Colour(0xFF00FF00)); // Lime
+        gradient.addColour(3.0f/6.0f, juce::Colours::cyan);
+        gradient.addColour(4.0f/6.0f, juce::Colours::blue);
+        gradient.addColour(5.0f/6.0f, juce::Colours::magenta);
+        gradient.addColour(1.0f, juce::Colours::red);
+        
+        g.setGradientFill(gradient);
+        g.fillAll();
+        
+        float y = currentHue * (float)getHeight();
+        
+        g.setColour(juce::Colours::white);
+        g.drawRect(0, (int)y - 2, getWidth(), 5, 2);
+        g.setColour(juce::Colours::black);
+        g.drawRect(0, (int)y - 2, getWidth(), 5, 1);
     }
     
-    juce::ColourSelector selector { juce::ColourSelector::showColourspace };
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        updateColor(e.y);
+    }
+    
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        updateColor(e.y);
+    }
+    
+    void updateColor(int y)
+    {
+        float normY = (float)y / (float)getHeight();
+        normY = juce::jlimit(0.0f, 1.0f, normY);
+        currentHue = normY;
+        
+        targetColor = juce::Colour::fromHSV(currentHue, 1.0f, 1.0f, 1.0f);
+        if (onUpdate) onUpdate();
+        repaint();
+    }
+    
     juce::Colour& targetColor;
     std::function<void()> onUpdate;
+    float currentHue;
 };
 
 class LaneComponent : public juce::Component
